@@ -150,6 +150,7 @@ impl Client {
     }
 
     fn propose_normal(&self, id: u64, node: &ActorPath) {
+        println!("PROPOSING NORMAL!!!!!!!!");
         let mut data: Vec<u8> = Vec::with_capacity(8);
         data.put_u64(id);
         let p = Proposal::normal(data);
@@ -158,6 +159,7 @@ impl Client {
     }
 
     fn propose_reconfiguration(&self, node: &ActorPath) {
+        println!("PROPOSING RECONFIG!!!!!!!!");
         let reconfig = self.reconfig.as_ref().unwrap();
         debug!(
             self.ctx.log(),
@@ -419,6 +421,7 @@ impl Actor for Client {
                 self.send_concurrent_proposals();
             }
             LocalClientMessage::Stop(a) => {
+                println!("Stopping client!");
                 let pending_proposals = std::mem::take(&mut self.pending_proposals);
                 for proposal_meta in pending_proposals {
                     self.cancel_timer(proposal_meta.1.timer);
@@ -435,7 +438,7 @@ impl Actor for Client {
             sender: _,
             receiver: _,
             data,
-            session: _,
+            //session: _,
         } = m;
         match_deser! {data {
             msg(am): AtomicBroadcastMsg [using AtomicBroadcastDeser] => {

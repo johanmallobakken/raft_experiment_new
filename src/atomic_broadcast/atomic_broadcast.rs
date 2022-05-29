@@ -694,7 +694,7 @@ impl AtomicBroadcastMaster {
         bc.validate();
         let tcp_no_delay = true;
         let system = atomic_broadcast::kompact_system_provider::global()
-            .new_remote_system_with_threads_config("atomicbroadcast", 4, conf, bc, tcp_no_delay);
+            .new_remote_system_with_threads_config("atomicbroadcast", 1, conf, bc, tcp_no_delay);
         self.system = Some(system);
         let last_node_id = if self.reconfiguration.is_some() {
             c.number_of_nodes + 1
@@ -735,6 +735,7 @@ impl AtomicBroadcastMaster {
             .actor_ref()
             .tell(IterationControlMsg::Run);
         leader_election_latch.wait(); // wait until leader is established
+        println!("FIRST LEADER ELECTED");
         self.partitioning_actor = Some(partitioning_actor);
         self.client_comp = Some(client_comp);
     }
@@ -1179,10 +1180,12 @@ pub fn run_experiment(
     for client in client_refs {
         let (kprom, kfuture) = promise::<SequenceResp>();
         let ask = Ask::new(kprom, ());
+        //println!("receive getsequence??????");
         client.tell(GetSequence(ask));
         futures.push(kfuture);
     }
     println!("RESPONSES AND SEQUENCE");
+    println!("futures len: {}", futures.len());
     let sequence_responses: Vec<_> = FutureCollection::collect_results::<Vec<_>>(futures);
     let quorum_size = num_nodes as usize / 2 + 1;
     check_quorum(&sequence_responses, quorum_size, num_proposals);

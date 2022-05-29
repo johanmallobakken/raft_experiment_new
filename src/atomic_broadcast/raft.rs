@@ -277,23 +277,29 @@ where
                 return self.kill_components(ask);
             }
             RaftCompMsg::GetSequence(ask) => {
-                println!("tttttttttttt");
-                println!("tttttttttttt");
-                println!("tttttttttttt");
-                println!("tttttttttttt");
-                println!("tttttttttttt");
-                match self.raft_replica {
-                    None => { println!("is none")}, 
-                    Some(_) => { println!("is some")}
+                println!("receive getsequence??????");
+
+                match &self.raft_replica {
+                    Some(r) => {
+                        println!("Raft replica exists.");
+                    },
+                    None => {
+                        println!("Raft replica does not exist.")
+                    }
                 }
 
                 let raft_replica = self.raft_replica.as_ref().expect("No raft replica");
+                println!("before wait seq??????");
                 let seq = raft_replica
                     .actor_ref()
-                    .ask_with(|promise| RaftReplicaMsg::SequenceReq(Ask::new(promise, ())))
-                    .wait();
+                    .ask_with(|promise| {
+                        println!("HELLO ASKWITH RaftReplicaMsg::SequenceReq");
+                        RaftReplicaMsg::SequenceReq(Ask::new(promise, ()))
+                    }).wait();
+                println!("after wait seq");
                 let sr = SequenceResp::with(self.pid, seq);
                 ask.reply(sr).expect("Failed to reply SequenceResp");
+                println!("end getsequence in raftcomp??????");
             }
         }
         Handled::Ok
@@ -456,6 +462,7 @@ where
                 }
             }
             RaftReplicaMsg::Stop(ask) => {
+                println!("STOP REPLICA");
                 self.communication_port
                     .trigger(CommunicatorMsg::SendStop(self.raw_raft.raft.id, true));
                 self.stop_timers();
@@ -467,9 +474,11 @@ where
                 }
             }
             RaftReplicaMsg::SequenceReq(sr) => {
+                println!("pre raw_raft.raft.raft_log.all_entries()?????");
                 let raft_entries: Vec<Entry> = self.raw_raft.raft.raft_log.all_entries();
                 let mut sequence: Vec<u64> = Vec::with_capacity(raft_entries.len());
                 let mut unique = HashSet::new();
+                println!("pre for entry in raft entries?????");
                 for entry in raft_entries {
                     if entry.get_entry_type() == EntryType::EntryNormal && !&entry.data.is_empty() {
                         let id = entry.data.as_slice().get_u64();
