@@ -14,7 +14,7 @@ use hashbrown::{HashMap, HashSet};
 use kompact::prelude::*;
 use protobuf::Message as PbMessage;
 use rand::Rng;
-use std::{borrow::Borrow, clone::Clone, marker::Send, ops::DerefMut, sync::Arc, time::Duration};
+use std::{borrow::Borrow, clone::Clone, marker::Send, ops::DerefMut, sync::Arc, time::Duration, os::unix::prelude::CommandExt};
 use tikv_raft::{
     prelude::{Message as TikvRaftMsg, *},
     StateRole,
@@ -277,29 +277,16 @@ where
                 return self.kill_components(ask);
             }
             RaftCompMsg::GetSequence(ask) => {
-                println!("receive getsequence??????");
-
-                match &self.raft_replica {
-                    Some(r) => {
-                        println!("Raft replica exists.");
-                    },
-                    None => {
-                        println!("Raft replica does not exist.")
-                    }
-                }
-
-                let raft_replica = self.raft_replica.as_ref().expect("No raft replica");
-                println!("before wait seq??????");
-                let seq = raft_replica
+                return Handled::block_on(self, move | async_self| async move {
+                    let raft_replica = async_self.raft_replica.as_ref().expect("No raft replica");
+                    let seq = raft_replica
                     .actor_ref()
                     .ask_with(|promise| {
-                        println!("HELLO ASKWITH RaftReplicaMsg::SequenceReq");
                         RaftReplicaMsg::SequenceReq(Ask::new(promise, ()))
-                    }).wait();
-                println!("after wait seq");
-                let sr = SequenceResp::with(self.pid, seq);
-                ask.reply(sr).expect("Failed to reply SequenceResp");
-                println!("end getsequence in raftcomp??????");
+                    }).await.expect("failed to ask");
+                    let sr = SequenceResp::with(async_self.pid, seq);
+                    ask.reply(sr).expect("Failed to reply SequenceResp");
+                });
             }
         }
         Handled::Ok

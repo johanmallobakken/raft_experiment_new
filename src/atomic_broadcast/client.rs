@@ -114,6 +114,7 @@ impl Client {
         leader_election_latch: Arc<CountdownEvent>,
         finished_latch: Arc<CountdownEvent>,
     ) -> Client {
+        println!("CREATING CLIENT");
         Client {
             ctx: ComponentContext::uninitialised(),
             num_proposals,
@@ -150,7 +151,6 @@ impl Client {
     }
 
     fn propose_normal(&self, id: u64, node: &ActorPath) {
-        println!("PROPOSING NORMAL!!!!!!!!");
         let mut data: Vec<u8> = Vec::with_capacity(8);
         data.put_u64(id);
         let p = Proposal::normal(data);
@@ -237,6 +237,7 @@ impl Client {
     }
 
     fn handle_normal_response(&mut self, id: u64, latency_res: Option<Duration>) {
+        //println!("Got response {}!!!!!", id);
         #[cfg(feature = "track_timestamps")]
         {
             let timestamp = self.clock.now();

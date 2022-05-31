@@ -21,9 +21,9 @@ impl Into<RaftCompMsg> for GetSequence {
 
 fn raft_normal_test() {
     println!("running test");
-    let num_nodes = 1;
-    let num_proposals = 10;
-    let concurrent_proposals = 5;
+    let num_nodes = 3;
+    let num_proposals = 1000;
+    let concurrent_proposals = 200;
     let reconfiguration = "off";
     let reconfig_policy = "none";
     run_experiment(
