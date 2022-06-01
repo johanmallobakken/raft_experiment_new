@@ -9,7 +9,7 @@ use super::{
     client::{Client, LocalClientMessage},
     raft::{RaftComp, ReconfigurationPolicy as RaftReconfigurationPolicy},
 };
-use crate::{atomic_broadcast::atomic_broadcast_request::*, GetSequence};
+use crate::{atomic_broadcast::atomic_broadcast_request::*, GetSequence, RaftState};
 use crate::atomic_broadcast::partitioning_actor::IterationControlMsg;
 //use benchmark_suite_shared::kompics_benchmarks::benchmarks::AtomicBroadcastRequest;
 use hashbrown::HashMap;
@@ -21,7 +21,6 @@ use synchronoise::CountdownEvent;
 
 #[allow(unused_imports)]
 use super::storage::raft::DiskStorage;
-use crate::atomic_broadcast::{raft::RaftCompMsg};
 
 use kompact::net::buffers::BufferConfig;
 use std::{
@@ -295,22 +294,26 @@ impl AtomicBroadcastMaster {
         &self,
         nodes: Vec<ActorPath>,
         client: ActorPath,
+        simulation_ref: &mut SimulationScenario<RaftState>
     ) -> Arc<Component<PartitioningActor>> {
         let system = self.system.as_ref().unwrap();
         let prepare_latch = Arc::new(CountdownEvent::new(1));
         /*** Setup partitioning actor ***/
-        let (partitioning_actor, unique_reg_f) = system.create_and_register(|| {
+        let (partitioning_actor, _) = simulation_ref.create_and_register(system, || {
             PartitioningActor::with(prepare_latch.clone(), None, self.iteration_id, nodes, None)
-        });
-        unique_reg_f.wait_expect(
+        }, REGISTER_TIMEOUT);
+        /*unique_reg_f.wait_expect(
             Duration::from_millis(1000),
             "PartitioningComp failed to register!",
-        );
+        );*/
 
-        let partitioning_actor_f = system.start_notify(&partitioning_actor);
+        /*let partitioning_actor_f = system.start_notify(&partitioning_actor);
         partitioning_actor_f
             .wait_timeout(Duration::from_millis(1000))
-            .expect("PartitioningComp never started!");
+            .expect("PartitioningComp never started!");*/
+        
+        simulation_ref.start_notify(system, &partitioning_actor, REGISTER_TIMEOUT);
+        
         let mut ser_client = Vec::<u8>::new();
         client
             .serialise(&mut ser_client)
@@ -318,6 +321,7 @@ impl AtomicBroadcastMaster {
         partitioning_actor
             .actor_ref()
             .tell(IterationControlMsg::Prepare(Some(ser_client)));
+        println!("pre wait");
         prepare_latch.wait();
         partitioning_actor
     }
@@ -328,12 +332,13 @@ impl AtomicBroadcastMaster {
         client_timeout: Duration,
         reconfig: Option<(Vec<u64>, Vec<u64>)>,
         leader_election_latch: Arc<CountdownEvent>,
+        simulation_ref: &mut SimulationScenario<RaftState>,
     ) -> (Arc<Component<Client>>, ActorPath) {
         let system = self.system.as_ref().unwrap();
         let finished_latch = self.finished_latch.clone().unwrap();
         /*** Setup client ***/
         let initial_config: Vec<_> = (1..=self.num_nodes.unwrap()).map(|x| x as u64).collect();
-        let (client_comp, unique_reg_f) = system.create_and_register(|| {
+        let (client_comp, _) = simulation_ref.create_and_register(system, || {
             Client::with(
                 initial_config,
                 self.num_proposals.unwrap(),
@@ -344,15 +349,17 @@ impl AtomicBroadcastMaster {
                 leader_election_latch,
                 finished_latch,
             )
-        });
-        unique_reg_f.wait_expect(REGISTER_TIMEOUT, "Client failed to register!");
-        let client_comp_f = system.start_notify(&client_comp);
-        client_comp_f
+        }, REGISTER_TIMEOUT);
+        //unique_reg_f.wait_expect(REGISTER_TIMEOUT, "Client failed to register!");
+        simulation_ref.start_notify(system, &client_comp, REGISTER_TIMEOUT);
+        /*client_comp_f
             .wait_timeout(REGISTER_TIMEOUT)
-            .expect("ClientComp never started!");
-        let client_path = system
+            .expect("ClientComp never started!");*/
+        let client_path = simulation_ref.register_by_alias(system, &client_comp, format!("client{}", &self.iteration_id), REGISTER_TIMEOUT);
+        /*let client_path = system
             .register_by_alias(&client_comp, format!("client{}", &self.iteration_id))
             .wait_expect(REGISTER_TIMEOUT, "Failed to register alias for ClientComp");
+        (client_comp, client_path)*/
         (client_comp, client_path)
     }
 
@@ -667,6 +674,7 @@ impl AtomicBroadcastMaster {
         &mut self,
         c: AtomicBroadcastRequest,
         m: &DeploymentMetaData,
+        simulation_ref: &mut SimulationScenario<RaftState>
     ) -> Result<ClientParams, BenchmarkError> {
         println!("Setting up Atomic Broadcast (Master)");
         self.validate_experiment_params(&c, m.number_of_clients())?;
@@ -693,8 +701,9 @@ impl AtomicBroadcastMaster {
         let bc = BufferConfig::from_config_file(CONFIG_PATH);
         bc.validate();
         let tcp_no_delay = true;
-        let system = atomic_broadcast::kompact_system_provider::global()
-            .new_remote_system_with_threads_config("atomicbroadcast", 1, conf, bc, tcp_no_delay);
+        let system = simulation_ref.spawn_system(conf);
+        /*atomic_broadcast::kompact_system_provider::global()
+            .new_remote_system_with_threads_config("atomicbroadcast", 1, conf, bc, tcp_no_delay);*/
         self.system = Some(system);
         let last_node_id = if self.reconfiguration.is_some() {
             c.number_of_nodes + 1
@@ -706,7 +715,7 @@ impl AtomicBroadcastMaster {
     }
 
 
-    fn prepare_iteration(&mut self, d: Vec<ActorPath>) -> () {
+    fn prepare_iteration(&mut self, d: Vec<ActorPath>, simulation_ref: &mut SimulationScenario<RaftState>) -> () {
         println!("Preparing iteration");
         if self.system.is_none() {
             panic!("No KompactSystem found!")
@@ -729,11 +738,15 @@ impl AtomicBroadcastMaster {
             client_timeout,
             self.reconfiguration.clone(),
             leader_election_latch.clone(),
+            simulation_ref,
         );
-        let partitioning_actor = self.initialise_iteration(nodes, client_path);
+        println!("pre partitioning actor");
+        let partitioning_actor = self.initialise_iteration(nodes, client_path, simulation_ref);
+        println!("after partitioning actor");
         partitioning_actor
             .actor_ref()
             .tell(IterationControlMsg::Run);
+        println!("PRE FIRST LEADER ELECTED");
         leader_election_latch.wait(); // wait until leader is established
         println!("FIRST LEADER ELECTED");
         self.partitioning_actor = Some(partitioning_actor);
@@ -1039,6 +1052,7 @@ fn create_nodes(
     algorithm: &str,
     reconfig_policy: &str,
     last_node_id: u64,
+    simulation_ref: &mut SimulationScenario<RaftState>
 ) -> (
     Vec<KompactSystem>,
     Vec<ActorPath>,
@@ -1053,14 +1067,15 @@ fn create_nodes(
     bc.validate();
     let tcp_no_delay = true;
     for i in 1..=n {
-        let system = atomic_broadcast::kompact_system_provider::global()
+        let system = simulation_ref.spawn_system(conf.clone());
+        /*atomic_broadcast::kompact_system_provider::global()
             .new_remote_system_with_threads_config(
                 format!("node{}", i),
                 1,
                 conf.clone(),
                 bc.clone(),
                 tcp_no_delay,
-            );
+            );*/
         let (actor_path, actor_ref) = match algorithm {
             "raft" => {
                 let voters = get_experiment_configs(last_node_id).0;
@@ -1071,20 +1086,24 @@ fn create_nodes(
                     unknown => panic!("Got unknown Raft transfer policy: {}", unknown),
                 };
                 /*** Setup RaftComp ***/
-                let (raft_comp, unique_reg_f) = system.create_and_register(|| {
+
+                /*let (raft_comp, unique_reg_f) = system.create_and_register(|| {
                     RaftComp::<Storage>::with(
                         voters,
                         reconfig_policy.unwrap_or(RaftReconfigurationPolicy::ReplaceFollower),
                     )
                 });
-                unique_reg_f.wait_expect(REGISTER_TIMEOUT, "RaftComp failed to register!");
-                let self_path = system
-                    .register_by_alias(&raft_comp, RAFT_PATH)
-                    .wait_expect(REGISTER_TIMEOUT, "Communicator failed to register!");
-                let raft_comp_f = system.start_notify(&raft_comp);
-                raft_comp_f
-                    .wait_timeout(REGISTER_TIMEOUT)
-                    .expect("RaftComp never started!");
+                unique_reg_f.wait_expect(REGISTER_TIMEOUT, "RaftComp failed to register!");*/
+
+                let (raft_comp, _) = simulation_ref.create_and_register(&system, || {
+                    RaftComp::<Storage>::with(
+                        voters,
+                        reconfig_policy.unwrap_or(RaftReconfigurationPolicy::ReplaceFollower),
+                    )
+                }, REGISTER_TIMEOUT);
+
+                let self_path = simulation_ref.register_by_alias(&system, &raft_comp, RAFT_PATH, REGISTER_TIMEOUT);
+                simulation_ref.start_notify(&system, &raft_comp, REGISTER_TIMEOUT);
 
                 let r: Recipient<GetSequence> = raft_comp.actor_ref().recipient();
                 (self_path, r)
@@ -1143,6 +1162,7 @@ pub fn run_experiment(
     concurrent_proposals: u64,
     reconfiguration: &str,
     reconfig_policy: &str,
+    simulation_ref: &mut SimulationScenario<RaftState>
 ) {
     println!("SETUP");
     let mut master = AtomicBroadcastMaster::new();
@@ -1167,12 +1187,13 @@ pub fn run_experiment(
         experiment.get_algorithm(),
         experiment.get_reconfig_policy(),
         num_nodes_needed,
+        simulation_ref
     );
     println!("MASTER SETUP");
     master
-        .setup(experiment, &d)
+        .setup(experiment, &d, simulation_ref)
         .expect("Failed to setup master");
-    master.prepare_iteration(clients);
+    master.prepare_iteration(clients, simulation_ref);
     println!("RUN ITERATION");
     master.run_iteration();
     println!("FUTURES AND CLIENT");
@@ -1180,7 +1201,6 @@ pub fn run_experiment(
     for client in client_refs {
         let (kprom, kfuture) = promise::<SequenceResp>();
         let ask = Ask::new(kprom, ());
-        //println!("receive getsequence??????");
         client.tell(GetSequence(ask));
         futures.push(kfuture);
     }
@@ -1198,6 +1218,7 @@ pub fn run_experiment(
         system.shutdown().expect("Failed to shutdown system");
     }
 }
+
 /*
 #[test]
 #[ignore]
