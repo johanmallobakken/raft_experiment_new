@@ -321,8 +321,13 @@ impl AtomicBroadcastMaster {
         partitioning_actor
             .actor_ref()
             .tell(IterationControlMsg::Prepare(Some(ser_client)));
-        println!("pre wait");
-        prepare_latch.wait();
+        
+        //prepare_latch.wait();
+        while prepare_latch.count() > 0 {
+            println!("prepare_latch");
+            simulation_ref.simulate_step();
+        }
+
         partitioning_actor
     }
 
@@ -747,19 +752,27 @@ impl AtomicBroadcastMaster {
             .actor_ref()
             .tell(IterationControlMsg::Run);
         println!("PRE FIRST LEADER ELECTED");
-        leader_election_latch.wait(); // wait until leader is established
+        //leader_election_latch.wait(); // wait until leader is established
+        while leader_election_latch.count() > 0 {
+            //println!("leader_election_latch");
+            simulation_ref.simulate_step();
+        }
         println!("FIRST LEADER ELECTED");
         self.partitioning_actor = Some(partitioning_actor);
         self.client_comp = Some(client_comp);
     }
 
-    fn run_iteration(&mut self) -> () {
+    fn run_iteration(&mut self, simulation_ref: &mut SimulationScenario<RaftState>) -> () {
         println!("Running Atomic Broadcast experiment!");
         match self.client_comp {
             Some(ref client_comp) => {
                 client_comp.actor_ref().tell(LocalClientMessage::Run);
                 let finished_latch = self.finished_latch.take().unwrap();
-                finished_latch.wait();
+                //finished_latch.wait();
+                while finished_latch.count() > 0 {
+                    println!("finished_latch");
+                    simulation_ref.simulate_step();
+                }
             }
             _ => panic!("No client found!"),
         }
@@ -1195,7 +1208,7 @@ pub fn run_experiment(
         .expect("Failed to setup master");
     master.prepare_iteration(clients, simulation_ref);
     println!("RUN ITERATION");
-    master.run_iteration();
+    master.run_iteration(simulation_ref);
     println!("FUTURES AND CLIENT");
     let mut futures = vec![];
     for client in client_refs {

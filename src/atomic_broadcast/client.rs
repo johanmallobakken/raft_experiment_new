@@ -435,6 +435,8 @@ impl Actor for Client {
     }
 
     fn receive_network(&mut self, m: NetMessage) -> Handled {
+        println!("CLIENT RECIEVE NETWORK");
+
         let NetMessage {
             sender: _,
             receiver: _,
@@ -446,6 +448,7 @@ impl Actor for Client {
                 // info!(self.ctx.log(), "Handling {:?}", am);
                 match am {
                     AtomicBroadcastMsg::FirstLeader(pid) => {
+                        println!("FIRST LEADER");
                         if !self.current_config.contains(&pid) { return Handled::Ok; }
                         match self.state {
                             ExperimentState::LeaderElection => {
