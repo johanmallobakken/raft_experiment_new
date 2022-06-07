@@ -1,7 +1,12 @@
-use super::*;
 use kompact::prelude::*;
 use std::sync::Arc;
 use synchronoise::CountdownEvent;
+
+use crate::atomic_broadcast::client::LocalClientMessage;
+
+use super::serialiser_ids;
+
+use super::client::Client;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
     pub enum KVOperation {
@@ -36,6 +41,7 @@ pub struct PartitioningActor {
     done_count: u32,
     test_promise: Option<KPromise<Vec<KVTimestamp>>>,
     test_results: Vec<KVTimestamp>,
+    //client_comp: Arc<Component<Client>>
 }
 
 impl PartitioningActor {
@@ -45,6 +51,7 @@ impl PartitioningActor {
         init_id: u32,
         nodes: Vec<ActorPath>,
         test_promise: Option<KPromise<Vec<KVTimestamp>>>,
+        //client_comp: Arc<Component<Client>>
     ) -> PartitioningActor {
         PartitioningActor {
             ctx: ComponentContext::uninitialised(),
@@ -59,6 +66,7 @@ impl PartitioningActor {
             done_count: 0,
             test_promise,
             test_results: Vec::new(),
+            //client_comp,
         }
     }
 }
@@ -106,6 +114,7 @@ impl Actor for PartitioningActor {
             msg(p): PartitioningActorMsg [using PartitioningActorSer] => {
                 match p {
                     PartitioningActorMsg::InitAck(_) => {
+                        println!("PARTITIONING ACTOR INIT ACK");
                         self.init_ack_count += 1;
                         debug!(self.ctx.log(), "Got init ack {}/{}", &self.init_ack_count, &self.n);
                         if self.init_ack_count == self.n {

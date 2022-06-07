@@ -11,7 +11,7 @@ use hashbrown::{HashMap, HashSet};
 use kompact::prelude::*;
 use protobuf::Message as PbMessage;
 use rand::Rng;
-use std::{borrow::Borrow, clone::Clone, marker::Send, ops::DerefMut, sync::Arc, time::Duration, os::unix::prelude::CommandExt};
+use std::{borrow::Borrow, clone::Clone, marker::Send, ops::DerefMut, sync::Arc, time::Duration, os::unix::prelude::CommandExt, cell::RefCell, rc::Rc};
 use tikv_raft::{
     prelude::{Message as TikvRaftMsg, *},
     StateRole,
@@ -27,6 +27,20 @@ pub enum RaftCompMsg {
     KillComponents(Ask<(), Done>),
     GetSequence(Ask<(), SequenceResp>),
 }
+
+#[derive(Clone)]
+pub struct RaftReplicaStruct<S>(Rc<RefCell<Option<RaftReplica<S>>>>)
+where
+    S: RaftStorage + Send + Clone + 'static,;
+
+unsafe impl<S> Sync for RaftReplicaStruct<S> 
+where
+    S: RaftStorage + Send + Clone + 'static,
+{}
+unsafe impl<S> Send for RaftReplicaStruct<S>
+where
+    S: RaftStorage + Send + Clone + 'static,
+{}
 
 struct RaftReplica<S>
 where
@@ -117,6 +131,12 @@ where
         }
     }
 
+    fn get_raft_replica(&self){
+        /*let raft_replica_struct = self.raft_replica_struct.clone();
+        let raft_option = raft_replica_struct.0.as_ref().take();
+        raft_option.unwrap();*/ 
+    }
+
     fn create_rawraft_config(&self) -> Config {
         let config = self.ctx.config();
         let max_inflight_msgs = config["experiment"]["max_inflight"]
@@ -160,7 +180,6 @@ where
     }
 
     fn create_components(&mut self) -> Handled {
-        let system = self.ctx.system();
         let dir = &format!("./diskstorage_node{}", self.pid);
         let conf_state: (Vec<u64>, Vec<u64>) = (self.initial_config.clone(), vec![]);
         let store = S::new_with_conf_state(Some(dir), conf_state);
@@ -170,6 +189,7 @@ where
             .as_i64()
             .expect("Failed to load max_inflight") as usize;
         
+        println!("!!!!raft_replica_struct!!!!");
         self.raft_replica_struct = Some(RaftReplica::with(
             raw_raft,
             self.actor_ref(),
@@ -177,6 +197,7 @@ where
             self.peers.len(),
             max_inflight
         ));
+
         self.partitioning_actor
         .take()
         .expect("No partitioning actor found!")
@@ -223,10 +244,11 @@ where
     }
 
     fn on_ready(&mut self) -> Handled {
-        println!("ON READYYYY");
-        if let Some(mut raft_replica) = self.raft_replica_struct.take() {
-            println!("ON READYYYY INSIDE");
+        //println!("ON READYYYY");
 
+        if let Some(mut raft_replica) = self.raft_replica_struct.take(){
+            println!("ON READYYYY INSIDE");
+            
             if !raft_replica.raw_raft.has_ready() {
                 return Handled::Ok;
             }
@@ -256,7 +278,13 @@ where
             let mut ready_msgs = Vec::with_capacity(raft_replica.max_inflight);
             std::mem::swap(&mut ready.messages, &mut ready_msgs);
             for msg in ready_msgs {
-                self.raft_replica_handle_atomicbroadcastcompmsg_rawraftmsg(msg);
+                //self.raft_replica_handle_atomicbroadcastcompmsg_rawraftmsg(msg);
+                if !self.stopped && raft_replica.reconfig_state != ReconfigurationState::Removed
+                {
+                    //FIXED: pass rm, call this functioon upon recieving message
+                    //self.step(rm);
+                    let _ = raft_replica.raw_raft.step(msg);
+                }
             }
             // let mut next_conf_change: Option<ConfChangeType> = None;
             // Apply all committed proposals.
@@ -413,7 +441,7 @@ where
     }
 
     fn tick(&mut self) -> Handled {
-        println!("TICKKKKKKKKKKKK");
+        //println!("TICKKKKKKKKKKKK");
         if let Some(mut raft_replica) = self.raft_replica_struct.take() {
             println!("TICKKKKKKKKKKKK INSIDE");
             raft_replica.raw_raft.tick();

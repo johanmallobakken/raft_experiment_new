@@ -22,6 +22,7 @@ enum ExperimentState {
 
 #[derive(Debug)]
 pub enum LocalClientMessage {
+    AllInitAcks,
     Run,
     Stop(Ask<(), MetaResults>), // (num_timed_out, latency)
 }
@@ -89,6 +90,7 @@ pub struct Client {
     first_proposal_after_reconfig: Option<u64>,
     retry_proposals: Vec<(u64, Option<SystemTime>)>,
     stop_ask: Option<Ask<(), MetaResults>>,
+    all_init_acks: bool,
     #[cfg(feature = "track_timeouts")]
     timeouts: Vec<u64>,
     #[cfg(feature = "track_timeouts")]
@@ -135,6 +137,7 @@ impl Client {
             first_proposal_after_reconfig: None,
             retry_proposals: Vec::with_capacity(num_concurrent_proposals as usize),
             stop_ask: None,
+            all_init_acks: false,
             #[cfg(feature = "track_timeouts")]
             timeouts: vec![],
             #[cfg(feature = "track_timeouts")]
@@ -237,7 +240,7 @@ impl Client {
     }
 
     fn handle_normal_response(&mut self, id: u64, latency_res: Option<Duration>) {
-        //println!("Got response {}!!!!!", id);
+        println!("Got response {}!!!!!", id);
         #[cfg(feature = "track_timestamps")]
         {
             let timestamp = self.clock.now();
@@ -247,9 +250,9 @@ impl Client {
         let received_count = self.responses.len() as u64;
         if received_count == self.num_proposals && self.reconfig.is_none() {
             self.state = ExperimentState::Finished;
-            self.finished_latch
+            /*self.finished_latch
                 .decrement()
-                .expect("Failed to countdown finished latch");
+                .expect("Failed to countdown finished latch");*/
             if self.num_timed_out > 0 {
                 info!(self.ctx.log(), "Got all responses with {} timeouts, Number of leader changes: {}, {:?}, Last leader was: {}", self.num_timed_out, self.leader_changes.len(), self.leader_changes, self.current_leader);
                 #[cfg(feature = "track_timeouts")]
@@ -409,6 +412,9 @@ impl Actor for Client {
 
     fn receive_local(&mut self, msg: Self::Message) -> Handled {
         match msg {
+            LocalClientMessage::AllInitAcks => {
+                self.all_init_acks = true;
+            }
             LocalClientMessage::Run => {
                 self.state = ExperimentState::Running;
                 assert_ne!(self.current_leader, 0);
@@ -435,6 +441,8 @@ impl Actor for Client {
     }
 
     fn receive_network(&mut self, m: NetMessage) -> Handled {
+        println!("CLIENT RECIEVE NETWORK");
+
         let NetMessage {
             sender: _,
             receiver: _,
@@ -446,16 +454,31 @@ impl Actor for Client {
                 // info!(self.ctx.log(), "Handling {:?}", am);
                 match am {
                     AtomicBroadcastMsg::FirstLeader(pid) => {
+                        println!("FIRST LEADER");
                         if !self.current_config.contains(&pid) { return Handled::Ok; }
                         match self.state {
                             ExperimentState::LeaderElection => {
                                 self.current_leader = pid;
-                                match self.leader_election_latch.decrement() {
+
+                                assert!(self.all_init_acks == true);
+                                
+                                self.state = ExperimentState::Running;
+                                assert_ne!(self.current_leader, 0);
+                                #[cfg(feature = "track_timestamps")]
+                                {
+                                    let now = self.clock.now();
+                                    self.start = Some(now);
+                                    self.leader_changes.push(self.current_leader);
+                                    self.leader_changes_t.push(now);
+                                }
+                                self.send_concurrent_proposals();
+
+                                /*match self.leader_election_latch.decrement() {
                                     Ok(_) => info!(self.ctx.log(), "Got first leader: {}", pid),
                                     Err(e) => if e != CountdownError::AlreadySet {
                                         panic!("Failed to decrement election latch: {:?}", e);
                                     }
-                                }
+                                }*/
                             },
                             ExperimentState::ReconfigurationElection => {
                                 if self.current_leader != pid {
@@ -514,7 +537,7 @@ impl Actor for Client {
                                     self.cancel_timer(proposal_meta.timer);
                                     if self.responses.len() as u64 == self.num_proposals {
                                         self.state = ExperimentState::Finished;
-                                        self.finished_latch.decrement().expect("Failed to countdown finished latch");
+                                        //self.finished_latch.decrement().expect("Failed to countdown finished latch");
                                         info!(self.ctx.log(), "Got reconfig at last. {} proposals timed out. Leader changes: {}, {:?}, Last leader was: {}", self.num_timed_out, self.leader_changes.len(), self.leader_changes, self.current_leader);
                                     } else {
                                         self.reconfig = None;
