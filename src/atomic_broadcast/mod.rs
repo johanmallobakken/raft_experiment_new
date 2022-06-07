@@ -1,6 +1,5 @@
 pub mod atomic_broadcast;
 mod client;
-mod communicator;
 mod messages;
 pub(crate) mod raft;
 mod storage;
