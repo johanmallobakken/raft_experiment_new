@@ -1102,7 +1102,7 @@ fn create_nodes(
     (systems, actor_paths, actor_refs)
 }
 
-fn check_quorum(sequence_responses: &[SequenceResp], quorum_size: usize, num_proposals: u64) {
+pub fn check_quorum(sequence_responses: &[SequenceResp], quorum_size: usize, num_proposals: u64) {
     for i in 1..=num_proposals {
         let nodes: Vec<_> = sequence_responses
             .iter()
@@ -1116,7 +1116,7 @@ fn check_quorum(sequence_responses: &[SequenceResp], quorum_size: usize, num_pro
     }
 }
 
-fn check_validity(sequence_responses: &[SequenceResp], num_proposals: u64) {
+pub fn check_validity(sequence_responses: &[SequenceResp], num_proposals: u64) {
     let invalid_nodes: Vec<_> = sequence_responses
         .iter()
         .map(|sr| (sr.node_id, sr.sequence.iter().max().unwrap_or(&0)))
@@ -1130,7 +1130,7 @@ fn check_validity(sequence_responses: &[SequenceResp], num_proposals: u64) {
     );
 }
 
-fn check_uniform_agreement(sequence_responses: &[SequenceResp]) {
+pub fn check_uniform_agreement(sequence_responses: &[SequenceResp]) {
     let longest_seq = sequence_responses
         .iter()
         .max_by(|sr, other_sr| sr.sequence.len().cmp(&other_sr.sequence.len()))
