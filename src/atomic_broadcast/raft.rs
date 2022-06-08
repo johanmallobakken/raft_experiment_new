@@ -516,6 +516,25 @@ where
         }
     }
 
+    fn stop_components(&mut self) -> Handled {
+        self.stopped = true;
+        //TODO: trigger stopping logic of raft replica RaftReplicaMsg::Stop(Ask::new(p, ())))
+        // info!(self.ctx.log(), "Stopping components");
+        /*let raft = self
+            .raft_replica
+            .as_ref()
+            .expect("Got stop but no Raft replica")
+        let stop_f = raft
+            .actor_ref()
+            .ask_with(|p| RaftReplicaMsg::Stop(Ask::new(p, ())));;
+        Handled::block_on(self, move |_| async move {
+            stop_f.await.expect("Failed to stop RaftReplica");
+        })*/
+
+        self.raft_replica_receive_local_raftreplicamsg_stop();
+        Handled::Ok
+    }
+
     fn tick(&mut self) -> Handled {
         self.raft_replica.raw_raft.tick();
         let leader = self.raft_replica.raw_raft.raft.leader_id;
@@ -654,6 +673,36 @@ where
             unique.len()
         );
         sr.reply(SequenceResp::with(self.pid, sequence));
+    }
+
+    fn raft_replica_receive_local_raftreplicamsg_stop(&mut self) {
+        //TODO: Send stop massage to peers? 
+        /*self.communication_port
+            .trigger(CommunicatorMsg::SendStop(self.raw_raft.raft.id, true));*/
+        
+        //COMMUNICATOR LOGIC
+        debug!(self.ctx.log(), "Sending stop to {:?}", self.peers.keys());
+        for ap in self.peers.values() {
+            ap.tell_serialised(NetStopMsg::Peer(self.pid), self)
+                .expect("Should serialise StopMsg")
+        }
+        
+        //if ack_client {
+        self.cached_client
+            .as_ref()
+            .expect("No cached client!")
+            .tell_serialised(NetStopMsg::Peer(self.pid), self)
+            .expect("Should serialise StopMsg");
+        //}
+
+        //COMMUNICATOR LOGIC END
+
+        self.stop_timers();
+        /*if self.stopped_peers.len() == self.num_peers {
+            ask.reply(()).expect("Failed to reply Stop ask");
+        } else {
+            self.stop_ask = Some(ask);
+        }*/
     }
 
     fn raft_replica_receive_local_raftreplicamsg_propose(&mut self, p: Proposal){
@@ -964,13 +1013,30 @@ where
                         //println!("RECEIVED RAWRAFTSER WOHOOOOOOOOOO");
                         self.raft_replica_handle_atomicbroadcastcompmsg_rawraftmsg(r);
                     },
-                    msg(client_stop): NetStopMsg [using StopMsgDeser] => {
-                        if let NetStopMsg::Client = client_stop {
+                    msg(stop): NetStopMsg [using StopMsgDeser] => {
+                        if let NetStopMsg::Client = stop {
                             println!("NETSTOPMSG::CLIENT");
                             // info!(self.ctx.log(), "Got client stop");
                             //assert!(!self.stopped);
                             //return self.stop_components();
                             //stop logic for raft_replica and communicator 
+                            assert!(!self.stopped);
+                            return self.stop_components();
+                        } else if let NetStopMsg::Peer(pid) = stop {
+                            println!("RECEIVED NETSTOP PEEER WOHOOOOOOOOOOOOO");
+                            /*assert!(
+                                self.stopped_peers.insert(from_pid),
+                                "Got duplicate stop from {}",
+                                pid
+                            );
+                            // info!(self.ctx.log(), "Got stop from {}. received: {}, num_peers: {}", from_pid, self.stopped_peers.len(), self.num_peers);
+                            if self.stopped_peers.len() == self.num_peers && self.stopped {
+                                self.stop_ask
+                                    .take()
+                                    .expect("No stop ask")
+                                    .reply(())
+                                    .expect("Failed to reply Stop ask");
+                            }*/
                         }
                     },
                     err(e) => error!(self.ctx.log(), "Error deserialising msg: {:?}", e),
