@@ -1,9 +1,9 @@
 extern crate raft as tikv_raft;
 
-use crate::atomic_broadcast::partitioning_actor::{PartitioningActorSer, PartitioningActorMsg};
+use crate::atomic_broadcast::{partitioning_actor::{PartitioningActorSer, PartitioningActorMsg}, messages::raft::RawRaftSer};
 
 use super::{
-    messages::{StopMsg as NetStopMsg, StopMsgDeser, *},
+    messages::{StopMsg as NetStopMsg, StopMsgDeser, *, raft::RaftMsg},
     storage::raft::*, partitioning_actor::KVOperation, atomic_broadcast::{SequenceResp, Done},
     serialiser_ids::ATOMICBCAST_ID,
 };
@@ -269,12 +269,12 @@ where
             self,
         )
         .expect("Should serialise InitAck");
-        println!("CREATED COMPONENTS");
+        //println!("CREATED COMPONENTS");
         Handled::Ok
     }
 
     fn start_components(&mut self) {
-        println!("RUN Starting components and timerssssssss!!");
+        //println!("RUN Starting components and timerssssssss!!");
         /*let raft = self.raft_replica.as_ref().expect("No raft comp to start!");
         let communicator = self
             .communicator
@@ -297,7 +297,7 @@ where
         let tick_period = config["raft"]["tick_period"]
             .as_i64()
             .expect("Failed to load tick_period") as u64;
-        println!("STARTING TIMERRRRRRRRRRRRRRRRRRRR");
+        //println!("STARTING TIMERRRRRRRRRRRRRRRRRRRR");
         let ready_timer = self.schedule_periodic(DELAY, outgoing_period, move |c, _| c.on_ready());
         let tick_timer =
             self.schedule_periodic(DELAY, Duration::from_millis(tick_period), move |rc, _| {
@@ -340,7 +340,21 @@ where
         let mut ready_msgs = Vec::with_capacity(self.raft_replica.max_inflight);
         std::mem::swap(&mut ready.messages, &mut ready_msgs);
         for msg in ready_msgs {
-            self.raft_replica_handle_atomicbroadcastcompmsg_rawraftmsg(msg);
+            //TODO: Send messages over the network to the destination RaftComp
+
+            let receiver = self.peers.get(&msg.get_to()).unwrap_or_else(|| {
+                panic!(
+                    "Could not find actorpath for id={}. Known peers: {:?}. RaftMsg: {:?}",
+                    &msg.get_to(),
+                    self.peers.keys(),
+                    msg
+                )
+            });
+            receiver
+                .tell_serialised(RaftMsg(msg), self)
+                .expect("Should serialise RaftMsg");
+
+            //self.raft_replica_handle_atomicbroadcastcompmsg_rawraftmsg(msg);
             /*if !self.stopped && self.raft_replica.reconfig_state != ReconfigurationState::Removed
             {
                 //FIXED: pass rm, call this functioon upon recieving message
@@ -352,6 +366,8 @@ where
         // let mut next_conf_change: Option<ConfChangeType> = None;
         // Apply all committed proposals.
         if let Some(committed_entries) = ready.committed_entries.take() {
+            //println!("?????? committed_entries");
+
             for entry in &committed_entries {
                 if entry.data.is_empty() {
                     // From new elected leaders.
@@ -483,7 +499,7 @@ where
     }
 
     fn try_campaign_leader(&mut self) -> Handled {
-        println!("try_campaign_leader!!!!!!!!!");
+        //println!("try_campaign_leader!!!!!!!!!");
         // start campaign to become leader if none has been elected yet
         let leader = self.raft_replica.raw_raft.raft.leader_id;
         if leader == 0 && self.raft_replica.state == State::Election {
@@ -505,7 +521,7 @@ where
         let leader = self.raft_replica.raw_raft.raft.leader_id;
         //println!("leader id: {}", leader);
         if leader != 0 {
-            println!("LEADER NOT EQUAL TO 0");
+            //println!("LEADER NOT EQUAL TO 0");
             if !self.raft_replica.hb_proposals.is_empty() {
                 let proposals = std::mem::take(&mut self.raft_replica.hb_proposals);
                 for proposal in proposals {
@@ -513,7 +529,7 @@ where
                 }
             }
             if leader != self.current_leader {
-                info!(self.ctx.log(), "New leader: {}, old: {}", leader, self.current_leader);
+                //info!(self.ctx.log(), "New leader: {}, old: {}", leader, self.current_leader);
                 self.current_leader = leader;
                 let notify_client = if self.raft_replica.state == State::Election {
                     self.raft_replica.state = State::Running;
@@ -617,11 +633,11 @@ where
 
     fn raft_replica_receive_local_raftreplicamsg_sequencereq(&mut self, sr: Ask<(), SequenceResp>){
         //FIXED: sr sent with RaftReplicaMsg::SequenceReq(sr) must be sent with this function
-        println!("pre raw_raft.raft.raft_log.all_entries()?????");
+        //println!("pre raw_raft.raft.raft_log.all_entries()?????");
         let raft_entries: Vec<Entry> = self.raft_replica.raw_raft.raft.raft_log.all_entries();
         let mut sequence: Vec<u64> = Vec::with_capacity(raft_entries.len());
         let mut unique = HashSet::new();
-        println!("pre for entry in raft entries?????");
+        //println!("pre for entry in raft entries?????");
         for entry in raft_entries {
             if entry.get_entry_type() == EntryType::EntryNormal && !&entry.data.is_empty() {
                 let id = entry.data.as_slice().get_u64();
@@ -823,7 +839,7 @@ where
     type Message = RaftCompMsg;
 
     fn receive_local(&mut self, msg: Self::Message) -> Handled {
-        println!("RECIEVE LOCAL? Shoould never happen");
+        //println!("RECIEVE LOCAL? Shoould never happen");
         match msg {
             RaftCompMsg::Leader(notify_client, pid) => {
 
@@ -881,10 +897,10 @@ where
     }
 
     fn receive_network(&mut self, m: NetMessage) -> Handled {
-        println!("RECIEVE NETWORK");
+        //println!("RECIEVE NETWORK");
         match m.data.ser_id {
             ATOMICBCAST_ID => {
-                println!("ATOMICBCASTMSGGGGGG");
+                //println!("ATOMICBCASTMSGGGGGG");
                 if !self.stopped {
                     if self.current_leader == self.pid || self.current_leader == 0 {
                         // if no leader, let raftcomp hold back
@@ -916,7 +932,7 @@ where
                     msg(p): PartitioningActorMsg [using PartitioningActorSer] => {
                         match p {
                             PartitioningActorMsg::Init(init) => {
-                                println!("PARTITIONINGACTORMSG::INIT");
+                                //println!("PARTITIONINGACTORMSG::INIT");
                                 info!(self.ctx.log(), "Raft got init, pid: {}", init.pid);
                                 self.current_leader = 0;
                                 self.iteration_id = init.init_id;
@@ -926,7 +942,7 @@ where
                                 self.cached_client = Some(client);
                                 
                                 self.peers = init.nodes.into_iter().enumerate().map(|(idx, ap)| (idx as u64 + 1, ap)).filter(|(pid, _)| pid != &my_pid).collect();
-                                println!("ASSERT: self.pid: {} my_pid: {}", self.pid, my_pid);
+                                //println!("ASSERT: self.pid: {} my_pid: {}", self.pid, my_pid);
                                 assert_eq!(self.pid, my_pid);
                                 self.pid = my_pid;
                                 self.partitioning_actor = Some(sender);
@@ -935,12 +951,17 @@ where
                                 return handled;
                             },
                             PartitioningActorMsg::Run => {
-                                println!("PARTITIONINGACTORMSG::RUN");
+                                //println!("PARTITIONINGACTORMSG::RUN");
                                 self.start_components();
                                 //FIXED: on_start logic for RaftReplica and Communicator(?)
                             },
                             _ => {},
                         }
+                    },
+                    msg(r): Message [using RawRaftSer] => {
+                        //TODO: trigger rawraft on recieve logic
+                        //println!("RECEIVED RAWRAFTSER WOHOOOOOOOOOO");
+                        self.raft_replica_handle_atomicbroadcastcompmsg_rawraftmsg(r);
                     },
                     msg(client_stop): NetStopMsg [using StopMsgDeser] => {
                         if let NetStopMsg::Client = client_stop {

@@ -22,7 +22,6 @@ enum ExperimentState {
 
 #[derive(Debug)]
 pub enum LocalClientMessage {
-    AllInitAcks,
     Run,
     Stop(Ask<(), MetaResults>), // (num_timed_out, latency)
 }
@@ -90,7 +89,6 @@ pub struct Client {
     first_proposal_after_reconfig: Option<u64>,
     retry_proposals: Vec<(u64, Option<SystemTime>)>,
     stop_ask: Option<Ask<(), MetaResults>>,
-    all_init_acks: bool,
     #[cfg(feature = "track_timeouts")]
     timeouts: Vec<u64>,
     #[cfg(feature = "track_timeouts")]
@@ -137,7 +135,6 @@ impl Client {
             first_proposal_after_reconfig: None,
             retry_proposals: Vec::with_capacity(num_concurrent_proposals as usize),
             stop_ask: None,
-            all_init_acks: false,
             #[cfg(feature = "track_timeouts")]
             timeouts: vec![],
             #[cfg(feature = "track_timeouts")]
@@ -240,7 +237,7 @@ impl Client {
     }
 
     fn handle_normal_response(&mut self, id: u64, latency_res: Option<Duration>) {
-        println!("Got response {}!!!!!", id);
+        //println!("Got response {}!!!!!", id);
         #[cfg(feature = "track_timestamps")]
         {
             let timestamp = self.clock.now();
@@ -412,9 +409,7 @@ impl Actor for Client {
 
     fn receive_local(&mut self, msg: Self::Message) -> Handled {
         match msg {
-            LocalClientMessage::AllInitAcks => {
-                self.all_init_acks = true;
-            }
+            //TODO: deleting LocalClientMessage::AllInitAcks, make sure this is nothing we actually need
             LocalClientMessage::Run => {
                 self.state = ExperimentState::Running;
                 assert_ne!(self.current_leader, 0);
@@ -441,7 +436,7 @@ impl Actor for Client {
     }
 
     fn receive_network(&mut self, m: NetMessage) -> Handled {
-        println!("CLIENT RECIEVE NETWORK");
+        //println!("CLIENT RECIEVE NETWORK");
 
         let NetMessage {
             sender: _,
@@ -454,13 +449,11 @@ impl Actor for Client {
                 // info!(self.ctx.log(), "Handling {:?}", am);
                 match am {
                     AtomicBroadcastMsg::FirstLeader(pid) => {
-                        println!("FIRST LEADER");
+                        //println!("FIRST LEADER");
                         if !self.current_config.contains(&pid) { return Handled::Ok; }
                         match self.state {
                             ExperimentState::LeaderElection => {
                                 self.current_leader = pid;
-
-                                assert!(self.all_init_acks == true);
                                 
                                 self.state = ExperimentState::Running;
                                 assert_ne!(self.current_leader, 0);
