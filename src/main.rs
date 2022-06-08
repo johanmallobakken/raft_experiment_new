@@ -38,3 +38,4 @@ fn raft_normal_test() {
 fn main() {
     raft_normal_test()
 }
+//Executing task: cargo run --package kompact_benchmarks --bin kompact_benchmarks 

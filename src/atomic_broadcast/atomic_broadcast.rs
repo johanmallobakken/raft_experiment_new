@@ -746,7 +746,10 @@ impl AtomicBroadcastMaster {
             Some(ref client_comp) => {
                 client_comp.actor_ref().tell(LocalClientMessage::Run);
                 let finished_latch = self.finished_latch.take().unwrap();
+                println!("11111111111111111 PRE FINISHED LATCH 1111111111111111111111");
                 finished_latch.wait();
+                println!("11111111111111111 POST FINISHED LATCH 1111111111111111111111");
+
             }
             _ => panic!("No client found!"),
         }
@@ -1173,6 +1176,7 @@ pub fn run_experiment(
     master
         .setup(experiment, &d)
         .expect("Failed to setup master");
+    println!("PREPARE ITERATION");
     master.prepare_iteration(clients);
     println!("RUN ITERATION");
     master.run_iteration();
@@ -1181,7 +1185,7 @@ pub fn run_experiment(
     for client in client_refs {
         let (kprom, kfuture) = promise::<SequenceResp>();
         let ask = Ask::new(kprom, ());
-        //println!("receive getsequence??????");
+        println!("SENDING OUT GET SEQUENCE HELLOOOOOOOOOOOOO");
         client.tell(GetSequence(ask));
         futures.push(kfuture);
     }

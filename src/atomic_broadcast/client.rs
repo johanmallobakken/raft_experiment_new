@@ -247,9 +247,9 @@ impl Client {
         let received_count = self.responses.len() as u64;
         if received_count == self.num_proposals && self.reconfig.is_none() {
             self.state = ExperimentState::Finished;
-            /*self.finished_latch
+            self.finished_latch
                 .decrement()
-                .expect("Failed to countdown finished latch");*/
+                .expect("Failed to countdown finished latch");
             if self.num_timed_out > 0 {
                 info!(self.ctx.log(), "Got all responses with {} timeouts, Number of leader changes: {}, {:?}, Last leader was: {}", self.num_timed_out, self.leader_changes.len(), self.leader_changes, self.current_leader);
                 #[cfg(feature = "track_timeouts")]
@@ -466,12 +466,12 @@ impl Actor for Client {
                                 }
                                 self.send_concurrent_proposals();
 
-                                /*match self.leader_election_latch.decrement() {
+                                match self.leader_election_latch.decrement() {
                                     Ok(_) => info!(self.ctx.log(), "Got first leader: {}", pid),
                                     Err(e) => if e != CountdownError::AlreadySet {
                                         panic!("Failed to decrement election latch: {:?}", e);
                                     }
-                                }*/
+                                }
                             },
                             ExperimentState::ReconfigurationElection => {
                                 if self.current_leader != pid {
@@ -530,7 +530,7 @@ impl Actor for Client {
                                     self.cancel_timer(proposal_meta.timer);
                                     if self.responses.len() as u64 == self.num_proposals {
                                         self.state = ExperimentState::Finished;
-                                        //self.finished_latch.decrement().expect("Failed to countdown finished latch");
+                                        self.finished_latch.decrement().expect("Failed to countdown finished latch");
                                         info!(self.ctx.log(), "Got reconfig at last. {} proposals timed out. Leader changes: {}, {:?}, Last leader was: {}", self.num_timed_out, self.leader_changes.len(), self.leader_changes, self.current_leader);
                                     } else {
                                         self.reconfig = None;

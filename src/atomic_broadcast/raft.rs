@@ -877,6 +877,7 @@ where
             }
             RaftCompMsg::GetSequence(ask) => {
 
+                println!("GET SEQUENCE REQQQQQQ");
                 self.raft_replica_receive_local_raftreplicamsg_sequencereq(ask);
 
 
