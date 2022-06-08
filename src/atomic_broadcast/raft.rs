@@ -20,6 +20,48 @@ use tikv_raft::{
 const COMMUNICATOR: &str = "communicator";
 const DELAY: Duration = Duration::from_millis(0);
 
+
+fn create_rawraft_config(pid: u64) -> Config {
+    let max_inflight_msgs: usize = 100000;//config["experiment"]["max_inflight"]
+        //.as_i64()
+        //.expect("Failed to load max_inflight") as usize;
+    let election_timeout: usize = 5000; //config["experiment"]["election_timeout"]
+        //.as_i64()
+        //.expect("Failed to load election_timeout") as usize;
+    let tick_period: usize = 100;//config["raft"]["tick_period"]
+        //.as_i64()
+        //.expect("Failed to load tick_period") as usize;
+    let leader_hb_period: usize = 1000;//config["raft"]["leader_hb_period"]
+        //.as_i64()
+        //.expect("Failed to load leader_hb_period") as usize;
+    let max_batch_size: u64 = 50000000;//config["raft"]["max_batch_size"]
+        //.as_i64()
+        //.expect("Failed to load max_batch_size") as u64;
+    let pre_vote = false; //config["raft"]["pre_vote"]
+        //.as_bool()
+        //.expect("Failed to load pre_vote");
+    let check_quorum = false; //config["raft"]["check_quorum"]
+        //.as_bool()
+        //.expect("Failed to load check_quorum");
+    // convert from ms to logical clock ticks
+    let election_tick = election_timeout / tick_period;
+    let heartbeat_tick = leader_hb_period / tick_period;
+    // info!(self.ctx.log(), "RawRaft config: election_tick={}, heartbeat_tick={}", election_tick, heartbeat_tick);
+    let max_size_per_msg = max_batch_size;
+    let c = Config {
+        id: pid,
+        election_tick,  // number of ticks without HB before starting election
+        heartbeat_tick, // leader sends HB every heartbeat_tick
+        max_inflight_msgs,
+        max_size_per_msg,
+        pre_vote,
+        check_quorum,
+        ..Default::default()
+    };
+    assert!(c.validate().is_ok(), "Invalid RawRaft config");
+    c
+}
+
 #[derive(Debug)]
 pub enum RaftCompMsg {
     Leader(bool, u64),
@@ -48,7 +90,7 @@ where
 {
     //RaftReplica
     //ctx: ComponentContext<Self>,
-    supervisor: ActorRef<RaftCompMsg>,
+    //supervisor: ActorRef<RaftCompMsg>,
     state: State,
     raw_raft: RawNode<S>,
     //communication_port: RequiredPort<CommunicationPort>,
@@ -70,13 +112,13 @@ where
 {
     pub fn with(
         raw_raft: RawNode<S>,
-        replica: ActorRef<RaftCompMsg>,
+        //replica: ActorRef<RaftCompMsg>,
         reconfig_policy: ReconfigurationPolicy,
         num_peers: usize,
         max_inflight: usize,
     ) -> RaftReplica<S> {
         RaftReplica {
-            supervisor: replica,
+            //supervisor: replica,
             state: State::Election,
             raw_raft,
             timers: None,
@@ -106,7 +148,7 @@ where
     cached_client: Option<ActorPath>,
     current_leader: u64,
     reconfig_policy: ReconfigurationPolicy,
-    raft_replica_struct: Option<RaftReplica<S>>,
+    raft_replica: RaftReplica<S>,
     timers: Option<(ScheduledTimer, ScheduledTimer)>,
 }
 
@@ -114,10 +156,30 @@ impl<S> RaftComp<S>
 where
     S: RaftStorage + Send + Clone + 'static,
 {
-    pub fn with(initial_config: Vec<u64>, reconfig_policy: ReconfigurationPolicy) -> Self {
+    pub fn with(pid: u64, initial_config: Vec<u64>, reconfig_policy: ReconfigurationPolicy) -> Self {
+        //FIXED:: raft replica struct here
+        //TODO: check for inconsistency in pid, update pid and peers len in create components???
+        let dir = &format!("./diskstorage_node{}", pid);
+        let conf_state: (Vec<u64>, Vec<u64>) = (initial_config.clone(), vec![]);
+        let store = S::new_with_conf_state(Some(dir), conf_state);
+        let raw_raft_config = create_rawraft_config(pid);
+        let raw_raft =
+            RawNode::new(&raw_raft_config, store).expect("Failed to create tikv Raft");
+
+        let max_inflight = raw_raft_config.max_inflight_msgs;//self.ctx.config()["experiment"]["max_inflight"]
+            //.as_i64()
+            //.expect("Failed to load max_inflight") as usize;
+        
+        let raft_replica = RaftReplica::with(
+            raw_raft,
+            reconfig_policy.clone(),
+            0,
+            max_inflight
+        );
+
         RaftComp {
             ctx: ComponentContext::uninitialised(),
-            pid: 0,
+            pid,
             initial_config,
             peers: HashMap::new(),
             iteration_id: 0,
@@ -126,7 +188,7 @@ where
             cached_client: None,
             current_leader: 0,
             reconfig_policy,
-            raft_replica_struct: None,
+            raft_replica,
             timers: None
         }
     }
@@ -136,7 +198,7 @@ where
         let raft_option = raft_replica_struct.0.as_ref().take();
         raft_option.unwrap();*/ 
     }
-
+    /* 
     fn create_rawraft_config(&self) -> Config {
         let config = self.ctx.config();
         let max_inflight_msgs = config["experiment"]["max_inflight"]
@@ -177,9 +239,10 @@ where
         };
         assert!(c.validate().is_ok(), "Invalid RawRaft config");
         c
-    }
+    }*/
 
     fn create_components(&mut self) -> Handled {
+        /* 
         let dir = &format!("./diskstorage_node{}", self.pid);
         let conf_state: (Vec<u64>, Vec<u64>) = (self.initial_config.clone(), vec![]);
         let store = S::new_with_conf_state(Some(dir), conf_state);
@@ -196,7 +259,7 @@ where
             self.reconfig_policy.clone(),
             self.peers.len(),
             max_inflight
-        ));
+        ));*/
 
         self.partitioning_actor
         .take()
@@ -246,158 +309,142 @@ where
     fn on_ready(&mut self) -> Handled {
         //println!("ON READYYYY");
 
-        if let Some(mut raft_replica) = self.raft_replica_struct.take(){
-            println!("ON READYYYY INSIDE");
-            
-            if !raft_replica.raw_raft.has_ready() {
-                return Handled::Ok;
+        //println!("ON READYYYY INSIDE");
+        
+        if !self.raft_replica.raw_raft.has_ready() {
+            return Handled::Ok;
+        }
+        let mut store = self.raft_replica.raw_raft.raft.raft_log.store.clone();
+
+        // Get the `Ready` with `RawNode::ready` interface.
+        let mut ready = self.raft_replica.raw_raft.ready();
+
+        // Persistent raft logs. It's necessary because in `RawNode::advance` we stabilize
+        // raft logs to the latest position.
+        if let Err(e) = store.append_log(ready.entries()) {
+            error!(
+                self.ctx.log(),
+                "{}",
+                format!("persist raft log fail: {:?}, need to retry or panic", e)
+            );
+            return Handled::Ok;
+        }
+
+        // Apply the snapshot. It's necessary because in `RawNode::advance` we stabilize the snapshot.
+        if *ready.snapshot() != Snapshot::default() {
+            unimplemented!("Should not be any snapshots to handle!");
+        }
+
+        //FIXED: send messages from here, replacing communicator logic TRIGGER RAFT REPLICA LOGIC WHEN RECIEVING CommunicatorMsg::RawRaftMsg
+        // Send out the messages come from the node.
+        let mut ready_msgs = Vec::with_capacity(self.raft_replica.max_inflight);
+        std::mem::swap(&mut ready.messages, &mut ready_msgs);
+        for msg in ready_msgs {
+            //self.raft_replica_handle_atomicbroadcastcompmsg_rawraftmsg(msg);
+            if !self.stopped && self.raft_replica.reconfig_state != ReconfigurationState::Removed
+            {
+                //FIXED: pass rm, call this functioon upon recieving message
+                //self.step(rm);
+                println!("STYEPPPINGGGGGGGGGGGGG");
+                let _ = self.raft_replica.raw_raft.step(msg);
             }
-            let mut store = raft_replica.raw_raft.raft.raft_log.store.clone();
-
-            // Get the `Ready` with `RawNode::ready` interface.
-            let mut ready = raft_replica.raw_raft.ready();
-
-            // Persistent raft logs. It's necessary because in `RawNode::advance` we stabilize
-            // raft logs to the latest position.
-            if let Err(e) = store.append_log(ready.entries()) {
-                error!(
-                    self.ctx.log(),
-                    "{}",
-                    format!("persist raft log fail: {:?}, need to retry or panic", e)
-                );
-                return Handled::Ok;
-            }
-
-            // Apply the snapshot. It's necessary because in `RawNode::advance` we stabilize the snapshot.
-            if *ready.snapshot() != Snapshot::default() {
-                unimplemented!("Should not be any snapshots to handle!");
-            }
-
-            //FIXED: send messages from here, replacing communicator logic TRIGGER RAFT REPLICA LOGIC WHEN RECIEVING CommunicatorMsg::RawRaftMsg
-            // Send out the messages come from the node.
-            let mut ready_msgs = Vec::with_capacity(raft_replica.max_inflight);
-            std::mem::swap(&mut ready.messages, &mut ready_msgs);
-            for msg in ready_msgs {
-                //self.raft_replica_handle_atomicbroadcastcompmsg_rawraftmsg(msg);
-                if !self.stopped && raft_replica.reconfig_state != ReconfigurationState::Removed
-                {
-                    //FIXED: pass rm, call this functioon upon recieving message
-                    //self.step(rm);
-                    let _ = raft_replica.raw_raft.step(msg);
+        }
+        // let mut next_conf_change: Option<ConfChangeType> = None;
+        // Apply all committed proposals.
+        if let Some(committed_entries) = ready.committed_entries.take() {
+            for entry in &committed_entries {
+                if entry.data.is_empty() {
+                    // From new elected leaders.
+                    continue;
                 }
-            }
-            // let mut next_conf_change: Option<ConfChangeType> = None;
-            // Apply all committed proposals.
-            if let Some(committed_entries) = ready.committed_entries.take() {
-                for entry in &committed_entries {
-                    if entry.data.is_empty() {
-                        // From new elected leaders.
+                if let EntryType::EntryConfChange = entry.get_entry_type() {
+                    if self.raft_replica.reconfig_state == ReconfigurationState::Removed
+                        || self.raft_replica.reconfig_state == ReconfigurationState::Finished
+                    {
                         continue;
                     }
-                    if let EntryType::EntryConfChange = entry.get_entry_type() {
-                        if raft_replica.reconfig_state == ReconfigurationState::Removed
-                            || raft_replica.reconfig_state == ReconfigurationState::Finished
-                        {
-                            continue;
+                    // For conf change messages, make them effective.
+                    let mut cc = ConfChange::default();
+                    cc.merge_from_bytes(&entry.data).unwrap();
+                    let change_type = cc.get_change_type();
+                    match &change_type {
+                        ConfChangeType::BeginMembershipChange => {
+                            let reconfig = cc.get_configuration();
+                            let start_index = cc.get_start_index();
+                            debug!(
+                                self.ctx.log(),
+                                "{}",
+                                format!(
+                                    "Beginning reconfiguration to: {:?}, start_index: {}",
+                                    reconfig, start_index
+                                )
+                            );
+                            self.raft_replica.raw_raft
+                                .raft
+                                .begin_membership_change(&cc)
+                                .expect("Failed to begin reconfiguration");
+
+                            assert!(self.raft_replica.raw_raft.raft.is_in_membership_change());
                         }
-                        // For conf change messages, make them effective.
-                        let mut cc = ConfChange::default();
-                        cc.merge_from_bytes(&entry.data).unwrap();
-                        let change_type = cc.get_change_type();
-                        match &change_type {
-                            ConfChangeType::BeginMembershipChange => {
-                                let reconfig = cc.get_configuration();
-                                let start_index = cc.get_start_index();
-                                debug!(
-                                    self.ctx.log(),
-                                    "{}",
-                                    format!(
-                                        "Beginning reconfiguration to: {:?}, start_index: {}",
-                                        reconfig, start_index
-                                    )
-                                );
-                                raft_replica.raw_raft
-                                    .raft
-                                    .begin_membership_change(&cc)
-                                    .expect("Failed to begin reconfiguration");
+                        ConfChangeType::FinalizeMembershipChange => {
+                            self.raft_replica.raw_raft
+                                .raft
+                                .finalize_membership_change(&cc)
+                                .expect("Failed to finalize reconfiguration");
 
-                                assert!(raft_replica.raw_raft.raft.is_in_membership_change());
+                            let current_conf = self.raft_replica.raw_raft.raft.prs().configuration().clone();
+                            let current_voters = current_conf.voters();
+                            if !current_voters.contains(&self.raft_replica.raw_raft.raft.id) {
+                                self.stop_timers();
+                                self.raft_replica.reconfig_state = ReconfigurationState::Removed;
+                            } else {
+                                self.raft_replica.reconfig_state = ReconfigurationState::Finished;
                             }
-                            ConfChangeType::FinalizeMembershipChange => {
-                                raft_replica.raw_raft
-                                    .raft
-                                    .finalize_membership_change(&cc)
-                                    .expect("Failed to finalize reconfiguration");
-
-                                let current_conf = raft_replica.raw_raft.raft.prs().configuration().clone();
-                                let current_voters = current_conf.voters();
-                                if !current_voters.contains(&raft_replica.raw_raft.raft.id) {
-                                    self.stop_timers();
-                                    raft_replica.reconfig_state = ReconfigurationState::Removed;
-                                } else {
-                                    raft_replica.reconfig_state = ReconfigurationState::Finished;
+                            let leader = self.raft_replica.raw_raft.raft.leader_id;
+                            if leader == 0 {
+                                // leader was removed
+                                self.raft_replica.state = State::Election; // reset leader so it can notify client when new leader emerges
+                                if self.raft_replica.reconfig_state != ReconfigurationState::Removed {
+                                    // campaign later if we are not removed
+                                    let mut rng = rand::thread_rng();
+                                    let config = self.ctx.config();
+                                    let tick_period = config["raft"]["tick_period"]
+                                        .as_i64()
+                                        .expect("Failed to load tick_period")
+                                        as usize;
+                                    let election_timeout = config["experiment"]["election_timeout"]
+                                        .as_i64()
+                                        .expect("Failed to load election_timeout")
+                                        as usize;
+                                    let initial_election_factor = config["experiment"]
+                                        ["initial_election_factor"]
+                                        .as_i64()
+                                        .expect("Failed to load initial_election_factor")
+                                        as usize;
+                                    // randomize with ticks to ensure at least one tick difference in timeout
+                                    let intial_timeout_ticks =
+                                        (election_timeout / initial_election_factor) / tick_period;
+                                    let rnd = rng
+                                        .gen_range(intial_timeout_ticks, 2 * intial_timeout_ticks);
+                                    let timeout = rnd * tick_period;
+                                    self.schedule_once(
+                                        Duration::from_millis(timeout as u64),
+                                        move |c, _| c.try_campaign_leader(),
+                                    );
                                 }
-                                let leader = raft_replica.raw_raft.raft.leader_id;
-                                if leader == 0 {
-                                    // leader was removed
-                                    raft_replica.state = State::Election; // reset leader so it can notify client when new leader emerges
-                                    if raft_replica.reconfig_state != ReconfigurationState::Removed {
-                                        // campaign later if we are not removed
-                                        let mut rng = rand::thread_rng();
-                                        let config = self.ctx.config();
-                                        let tick_period = config["raft"]["tick_period"]
-                                            .as_i64()
-                                            .expect("Failed to load tick_period")
-                                            as usize;
-                                        let election_timeout = config["experiment"]["election_timeout"]
-                                            .as_i64()
-                                            .expect("Failed to load election_timeout")
-                                            as usize;
-                                        let initial_election_factor = config["experiment"]
-                                            ["initial_election_factor"]
-                                            .as_i64()
-                                            .expect("Failed to load initial_election_factor")
-                                            as usize;
-                                        // randomize with ticks to ensure at least one tick difference in timeout
-                                        let intial_timeout_ticks =
-                                            (election_timeout / initial_election_factor) / tick_period;
-                                        let rnd = rng
-                                            .gen_range(intial_timeout_ticks, 2 * intial_timeout_ticks);
-                                        let timeout = rnd * tick_period;
-                                        self.schedule_once(
-                                            Duration::from_millis(timeout as u64),
-                                            move |c, _| c.try_campaign_leader(),
-                                        );
-                                    }
-                                }
-                                let conf_len = current_voters.len();
-                                let mut data: Vec<u8> = Vec::with_capacity(8 + 4 + 8 * conf_len);
-                                data.put_u64(RECONFIG_ID);
-                                data.put_u32(conf_len as u32);
-                                for pid in current_voters {
-                                    data.put_u64(*pid);
-                                }
-                                let cs = ConfState::from(current_conf);
-                                store.set_conf_state(cs, None);
-
-                                let pr = ProposalResp::with(data, leader);
-                                //FIXED: Send messages from here replacing communicator logic SEND TO CLIENT
-                                /*self.communication_port
-                                    .trigger(CommunicatorMsg::ProposalResponse(pr));*/
-                                self.cached_client
-                                    .as_ref()
-                                    .expect("No cached client!")
-                                    .tell_serialised(AtomicBroadcastMsg::ProposalResp(pr), self)
-                                    .expect("Should serialise ProposalResp");
                             }
-                            _ => unimplemented!(),
-                        }
-                    } else {
-                        // normal proposals
-                        if raft_replica.raw_raft.raft.state == StateRole::Leader {
-                            let pr =
-                                ProposalResp::with(entry.get_data().to_vec(), raft_replica.raw_raft.raft.id);
-                            //FIXED: Send messages from here replacing communicator logic, SEND TO CLIENT
+                            let conf_len = current_voters.len();
+                            let mut data: Vec<u8> = Vec::with_capacity(8 + 4 + 8 * conf_len);
+                            data.put_u64(RECONFIG_ID);
+                            data.put_u32(conf_len as u32);
+                            for pid in current_voters {
+                                data.put_u64(*pid);
+                            }
+                            let cs = ConfState::from(current_conf);
+                            store.set_conf_state(cs, None);
+
+                            let pr = ProposalResp::with(data, leader);
+                            //FIXED: Send messages from here replacing communicator logic SEND TO CLIENT
                             /*self.communication_port
                                 .trigger(CommunicatorMsg::ProposalResponse(pr));*/
                             self.cached_client
@@ -406,28 +453,41 @@ where
                                 .tell_serialised(AtomicBroadcastMsg::ProposalResp(pr), self)
                                 .expect("Should serialise ProposalResp");
                         }
+                        _ => unimplemented!(),
+                    }
+                } else {
+                    // normal proposals
+                    if self.raft_replica.raw_raft.raft.state == StateRole::Leader {
+                        let pr =
+                            ProposalResp::with(entry.get_data().to_vec(), self.raft_replica.raw_raft.raft.id);
+                        //FIXED: Send messages from here replacing communicator logic, SEND TO CLIENT
+                        /*self.communication_port
+                            .trigger(CommunicatorMsg::ProposalResponse(pr));*/
+                        self.cached_client
+                            .as_ref()
+                            .expect("No cached client!")
+                            .tell_serialised(AtomicBroadcastMsg::ProposalResp(pr), self)
+                            .expect("Should serialise ProposalResp");
                     }
                 }
-                if let Some(last_committed) = committed_entries.last() {
-                    store
-                        .set_hard_state(last_committed.index, last_committed.term)
-                        .expect("Failed to set hardstate");
-                }
             }
-            // Call `RawNode::advance` interface to update position flags in the raft.
-            raft_replica.raw_raft.advance(ready);
+            if let Some(last_committed) = committed_entries.last() {
+                store
+                    .set_hard_state(last_committed.index, last_committed.term)
+                    .expect("Failed to set hardstate");
+            }
         }
+        // Call `RawNode::advance` interface to update position flags in the raft.
+        self.raft_replica.raw_raft.advance(ready);
         Handled::Ok
     }
 
     fn try_campaign_leader(&mut self) -> Handled {
-
-        if let Some(mut raft_replica) = self.raft_replica_struct.take() { 
-            // start campaign to become leader if none has been elected yet
-            let leader = raft_replica.raw_raft.raft.leader_id;
-            if leader == 0 && raft_replica.state == State::Election {
-                let _ = raft_replica.raw_raft.campaign();
-            }
+        println!("try_campaign_leader!!!!!!!!!");
+        // start campaign to become leader if none has been elected yet
+        let leader = self.raft_replica.raw_raft.raft.leader_id;
+        if leader == 0 && self.raft_replica.state == State::Election {
+            let _ = self.raft_replica.raw_raft.campaign();
         }
 
         Handled::Ok
@@ -442,173 +502,161 @@ where
 
     fn tick(&mut self) -> Handled {
         //println!("TICKKKKKKKKKKKK");
-        if let Some(mut raft_replica) = self.raft_replica_struct.take() {
-            println!("TICKKKKKKKKKKKK INSIDE");
-            raft_replica.raw_raft.tick();
-            let leader = raft_replica.raw_raft.raft.leader_id;
-            if leader != 0 {
-                if !raft_replica.hb_proposals.is_empty() {
-                    let proposals = std::mem::take(&mut raft_replica.hb_proposals);
-                    for proposal in proposals {
-                        self.propose(proposal);
-                    }
+        //println!("TICKKKKKKKKKKKK INSIDE");
+        self.raft_replica.raw_raft.tick();
+        let leader = self.raft_replica.raw_raft.raft.leader_id;
+        if leader != 0 {
+            println!("LEADER NOT EQUAL TO 0");
+            if !self.raft_replica.hb_proposals.is_empty() {
+                let proposals = std::mem::take(&mut self.raft_replica.hb_proposals);
+                for proposal in proposals {
+                    self.propose(proposal);
                 }
-                if leader != self.current_leader {
-                    // info!(self.ctx.log(), "New leader: {}, old: {}", leader, self.current_leader);
-                    self.current_leader = leader;
-                    let notify_client = if raft_replica.state == State::Election {
-                        raft_replica.state = State::Running;
-                        true
-                    } else {
-                        false
-                    };
+            }
+            if leader != self.current_leader {
+                // info!(self.ctx.log(), "New leader: {}, old: {}", leader, self.current_leader);
+                self.current_leader = leader;
+                let notify_client = if self.raft_replica.state == State::Election {
+                    self.raft_replica.state = State::Running;
+                    true
+                } else {
+                    false
+                };
 
-                    //FIXED: Simply trigger logic for RaftCompMsg::Leader here
-                    /* 
-                    self.supervisor
-                        .tell(RaftCompMsg::Leader(notify_client, leader));
-                    */
-                    self.raft_comp_receive_local_raftcompmsg_leader(notify_client, leader);
-                }
+                //FIXED: Simply trigger logic for RaftCompMsg::Leader here
+                /* 
+                self.supervisor
+                    .tell(RaftCompMsg::Leader(notify_client, leader));
+                */
+                self.raft_comp_receive_local_raftcompmsg_leader(notify_client, leader);
             }
         }
         Handled::Ok
     }
 
     fn propose(&mut self, proposal: Proposal) {
-        if let Some(mut raft_replica) = self.raft_replica_struct.take() {
-            if raft_replica.raw_raft.raft.leader_id == 0 {
-                raft_replica.hb_proposals.push(proposal);
-                return;
-            }
-            match proposal.reconfig {
-                Some(mut reconfig) => {
-                    if let ReconfigurationState::None = raft_replica.reconfig_state {
-                        let leader_pid = raft_replica.raw_raft.raft.leader_id;
-                        if leader_pid != raft_replica.raw_raft.raft.id {
-                            //FIXED: Simply trigger RaftCompMsg::ForwardReconfig logic from here
-                            /*self.supervisor
-                                .tell(RaftCompMsg::ForwardReconfig(leader_pid, reconfig));*/
-                            self.raft_comp_receive_local_raftcompmsg_forwardreconfig(leader_pid, reconfig);
-                            return;
+        if self.raft_replica.raw_raft.raft.leader_id == 0 {
+            self.raft_replica.hb_proposals.push(proposal);
+            return;
+        }
+        match proposal.reconfig {
+            Some(mut reconfig) => {
+                if let ReconfigurationState::None = self.raft_replica.reconfig_state {
+                    let leader_pid = self.raft_replica.raw_raft.raft.leader_id;
+                    if leader_pid != self.raft_replica.raw_raft.raft.id {
+                        //FIXED: Simply trigger RaftCompMsg::ForwardReconfig logic from here
+                        /*self.supervisor
+                            .tell(RaftCompMsg::ForwardReconfig(leader_pid, reconfig));*/
+                        self.raft_comp_receive_local_raftcompmsg_forwardreconfig(leader_pid, reconfig);
+                        return;
+                    }
+                    let mut current_config = self.raft_replica.raw_raft.raft.prs().configuration().voters().clone();
+                    match self.reconfig_policy {
+                        ReconfigurationPolicy::ReplaceLeader => {
+                            let mut add_nodes: Vec<u64> = reconfig
+                                .0
+                                .drain(..)
+                                .filter(|pid| !current_config.contains(pid))
+                                .collect();
+                            current_config.remove(&leader_pid);
+                            let mut new_voters = current_config.into_iter().collect::<Vec<u64>>();
+                            new_voters.append(&mut add_nodes);
+                            let new_config = (new_voters, vec![]);
+                            // info!(self.ctx.log(), "Joint consensus remove leader: my pid: {}, reconfig: {:?}", leader_pid, new_config);
+                            self.raft_replica.raw_raft
+                                .raft
+                                .propose_membership_change(new_config)
+                                .expect(
+                                "Failed to propose joint consensus reconfiguration (remove leader)",
+                            );
                         }
-                        let mut current_config = raft_replica.raw_raft.raft.prs().configuration().voters().clone();
-                        match self.reconfig_policy {
-                            ReconfigurationPolicy::ReplaceLeader => {
+                        ReconfigurationPolicy::ReplaceFollower => {
+                            if !reconfig.0.contains(&leader_pid) {
+                                let my_pid = self.raft_replica.raw_raft.raft.id;
                                 let mut add_nodes: Vec<u64> = reconfig
                                     .0
                                     .drain(..)
                                     .filter(|pid| !current_config.contains(pid))
                                     .collect();
-                                current_config.remove(&leader_pid);
-                                let mut new_voters = current_config.into_iter().collect::<Vec<u64>>();
+                                let follower_pid: u64 = **(current_config
+                                    .iter()
+                                    .filter(|pid| *pid != &my_pid)
+                                    .collect::<Vec<&u64>>()
+                                    .first()
+                                    .expect("No followers found"));
+                                current_config.remove(&follower_pid);
+                                let mut new_voters =
+                                    current_config.into_iter().collect::<Vec<u64>>();
                                 new_voters.append(&mut add_nodes);
                                 let new_config = (new_voters, vec![]);
-                                // info!(self.ctx.log(), "Joint consensus remove leader: my pid: {}, reconfig: {:?}", leader_pid, new_config);
-                                raft_replica.raw_raft
+                                // info!(self.ctx.log(), "Joint consensus remove follower: my pid: {}, reconfig: {:?}", leader_pid, new_config);
+                                self.raft_replica.raw_raft
                                     .raft
                                     .propose_membership_change(new_config)
-                                    .expect(
-                                    "Failed to propose joint consensus reconfiguration (remove leader)",
-                                );
-                            }
-                            ReconfigurationPolicy::ReplaceFollower => {
-                                if !reconfig.0.contains(&leader_pid) {
-                                    let my_pid = raft_replica.raw_raft.raft.id;
-                                    let mut add_nodes: Vec<u64> = reconfig
-                                        .0
-                                        .drain(..)
-                                        .filter(|pid| !current_config.contains(pid))
-                                        .collect();
-                                    let follower_pid: u64 = **(current_config
-                                        .iter()
-                                        .filter(|pid| *pid != &my_pid)
-                                        .collect::<Vec<&u64>>()
-                                        .first()
-                                        .expect("No followers found"));
-                                    current_config.remove(&follower_pid);
-                                    let mut new_voters =
-                                        current_config.into_iter().collect::<Vec<u64>>();
-                                    new_voters.append(&mut add_nodes);
-                                    let new_config = (new_voters, vec![]);
-                                    // info!(self.ctx.log(), "Joint consensus remove follower: my pid: {}, reconfig: {:?}", leader_pid, new_config);
-                                    raft_replica.raw_raft
-                                        .raft
-                                        .propose_membership_change(new_config)
-                                        .expect("Failed to propose joint consensus reconfiguration");
-                                } else {
-                                    raft_replica.raw_raft.raft.propose_membership_change(reconfig).expect("Failed to propose joint consensus reconfiguration (remove follower)");
-                                }
+                                    .expect("Failed to propose joint consensus reconfiguration");
+                            } else {
+                                self.raft_replica.raw_raft.raft.propose_membership_change(reconfig).expect("Failed to propose joint consensus reconfiguration (remove follower)");
                             }
                         }
-                        raft_replica.reconfig_state = ReconfigurationState::Pending;
                     }
+                    self.raft_replica.reconfig_state = ReconfigurationState::Pending;
                 }
-                None => {
-                    // i.e normal operation
-                    let data = proposal.data;
-                    raft_replica.raw_raft.propose(vec![], data).unwrap_or_else(|_| {
-                        panic!(
-                            "Failed to propose. leader: {}, lead_transferee: {:?}",
-                            raft_replica.raw_raft.raft.leader_id, raft_replica.raw_raft.raft.lead_transferee
-                        )
-                    });
-                }
+            }
+            None => {
+                // i.e normal operation
+                let data = proposal.data;
+                self.raft_replica.raw_raft.propose(vec![], data).unwrap_or_else(|_| {
+                    panic!(
+                        "Failed to propose. leader: {}, lead_transferee: {:?}",
+                        self.raft_replica.raw_raft.raft.leader_id, self.raft_replica.raw_raft.raft.lead_transferee
+                    )
+                });
             }
         }
     }
 
     fn raft_replica_receive_local_raftreplicamsg_sequencereq(&mut self, sr: Ask<(), SequenceResp>){
         //FIXED: sr sent with RaftReplicaMsg::SequenceReq(sr) must be sent with this function
-        if let Some(raft_replica) = self.raft_replica_struct.take() {
-            println!("pre raw_raft.raft.raft_log.all_entries()?????");
-            let raft_entries: Vec<Entry> = raft_replica.raw_raft.raft.raft_log.all_entries();
-            let mut sequence: Vec<u64> = Vec::with_capacity(raft_entries.len());
-            let mut unique = HashSet::new();
-            println!("pre for entry in raft entries?????");
-            for entry in raft_entries {
-                if entry.get_entry_type() == EntryType::EntryNormal && !&entry.data.is_empty() {
-                    let id = entry.data.as_slice().get_u64();
-                    if id != 0 {
-                        sequence.push(id);
-                    }
-                    unique.insert(id);
+        println!("pre raw_raft.raft.raft_log.all_entries()?????");
+        let raft_entries: Vec<Entry> = self.raft_replica.raw_raft.raft.raft_log.all_entries();
+        let mut sequence: Vec<u64> = Vec::with_capacity(raft_entries.len());
+        let mut unique = HashSet::new();
+        println!("pre for entry in raft entries?????");
+        for entry in raft_entries {
+            if entry.get_entry_type() == EntryType::EntryNormal && !&entry.data.is_empty() {
+                let id = entry.data.as_slice().get_u64();
+                if id != 0 {
+                    sequence.push(id);
                 }
+                unique.insert(id);
             }
-            info!(
-                self.ctx.log(),
-                "Got SequenceReq: my seq_len={}. Unique={}",
-                sequence.len(),
-                unique.len()
-            );
-            sr.reply(SequenceResp::with(self.pid, sequence));
         }
+        info!(
+            self.ctx.log(),
+            "Got SequenceReq: my seq_len={}. Unique={}",
+            sequence.len(),
+            unique.len()
+        );
+        sr.reply(SequenceResp::with(self.pid, sequence));
     }
 
     fn raft_replica_receive_local_raftreplicamsg_propose(&mut self, p: Proposal){
         //FIXED: Get p from RaftReplicaMsg::Propose through function
-        if let Some(raft_replica) = self.raft_replica_struct.take() {
-            if raft_replica.reconfig_state != ReconfigurationState::Removed {
-                self.propose(p);
-            }
+        if self.raft_replica.reconfig_state != ReconfigurationState::Removed {
+            self.propose(p);
         }
     }
 
     fn raft_replica_handle_atomicbroadcastcompmsg_rawraftmsg(&mut self, rm: Message) {
-        if let Some(raft_replica) = self.raft_replica_struct.take() { 
-            if !self.stopped && raft_replica.reconfig_state != ReconfigurationState::Removed
-            {
-                //FIXED: pass rm, call this functioon upon recieving message
-                self.step(rm);
-            }
-
+        if !self.stopped && self.raft_replica.reconfig_state != ReconfigurationState::Removed
+        {
+            //FIXED: pass rm, call this functioon upon recieving message
+            self.step(rm);
         }
     }
 
     fn step(&mut self, msg: TikvRaftMsg) {
-        if let Some(mut raft_replica) = self.raft_replica_struct.take() { 
-            let _ = raft_replica.raw_raft.step(msg);
-        }
+        let _ = self.raft_replica.raw_raft.step(msg);
     }
 
     fn raft_comp_receive_local_raftcompmsg_forwardreconfig(&mut self, leader_pid: u64, reconfig: (Vec<u64>, Vec<u64>)){
@@ -875,6 +923,8 @@ where
                                 self.cached_client = Some(client);
                                 
                                 self.peers = init.nodes.into_iter().enumerate().map(|(idx, ap)| (idx as u64 + 1, ap)).filter(|(pid, _)| pid != &my_pid).collect();
+                                println!("ASSERT: self.pid: {} my_pid: {}", self.pid, my_pid);
+                                assert_eq!(self.pid, my_pid);
                                 self.pid = my_pid;
                                 self.partitioning_actor = Some(sender);
                                 self.stopped = false;

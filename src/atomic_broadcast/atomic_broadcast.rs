@@ -1073,6 +1073,7 @@ fn create_nodes(
                 /*** Setup RaftComp ***/
                 let (raft_comp, unique_reg_f) = system.create_and_register(|| {
                     RaftComp::<Storage>::with(
+                        i,
                         voters,
                         reconfig_policy.unwrap_or(RaftReconfigurationPolicy::ReplaceFollower),
                     )
