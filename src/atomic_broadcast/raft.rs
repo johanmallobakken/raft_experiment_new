@@ -94,16 +94,16 @@ where
     state: State,
     raw_raft: RawNode<S>,
     //communication_port: RequiredPort<CommunicationPort>,
-    timers: Option<(ScheduledTimer, ScheduledTimer)>,
+    //timers: Option<(ScheduledTimer, ScheduledTimer)>,
     reconfig_state: ReconfigurationState,
     //current_leader: u64,
     //reconfig_policy: ReconfigurationPolicy,
-    num_peers: usize,
+    //num_peers: usize,
     //stopped: bool,
-    stopped_peers: HashSet<u64>,
+    //stopped_peers: HashSet<u64>,
     hb_proposals: Vec<Proposal>,
     max_inflight: usize,
-    stop_ask: Option<Ask<(), ()>>,
+    //sstop_ask: Option<Ask<(), ()>>,
 }
 
 impl<S> RaftReplica<S>
@@ -121,13 +121,13 @@ where
             //supervisor: replica,
             state: State::Election,
             raw_raft,
-            timers: None,
+            //timers: None,
             reconfig_state: ReconfigurationState::None,
-            stopped_peers: HashSet::new(),
-            num_peers,
+            //stopped_peers: HashSet::new(),
+            //num_peers,
             hb_proposals: vec![],
             max_inflight,
-            stop_ask: None,
+            //stop_ask: None,
         }
     }
 }
@@ -340,14 +340,14 @@ where
         let mut ready_msgs = Vec::with_capacity(self.raft_replica.max_inflight);
         std::mem::swap(&mut ready.messages, &mut ready_msgs);
         for msg in ready_msgs {
-            //self.raft_replica_handle_atomicbroadcastcompmsg_rawraftmsg(msg);
-            if !self.stopped && self.raft_replica.reconfig_state != ReconfigurationState::Removed
+            self.raft_replica_handle_atomicbroadcastcompmsg_rawraftmsg(msg);
+            /*if !self.stopped && self.raft_replica.reconfig_state != ReconfigurationState::Removed
             {
                 //FIXED: pass rm, call this functioon upon recieving message
                 //self.step(rm);
                 println!("STYEPPPINGGGGGGGGGGGGG");
                 let _ = self.raft_replica.raw_raft.step(msg);
-            }
+            }*/
         }
         // let mut next_conf_change: Option<ConfChangeType> = None;
         // Apply all committed proposals.
@@ -501,10 +501,9 @@ where
     }
 
     fn tick(&mut self) -> Handled {
-        //println!("TICKKKKKKKKKKKK");
-        //println!("TICKKKKKKKKKKKK INSIDE");
         self.raft_replica.raw_raft.tick();
         let leader = self.raft_replica.raw_raft.raft.leader_id;
+        //println!("leader id: {}", leader);
         if leader != 0 {
             println!("LEADER NOT EQUAL TO 0");
             if !self.raft_replica.hb_proposals.is_empty() {
@@ -514,7 +513,7 @@ where
                 }
             }
             if leader != self.current_leader {
-                // info!(self.ctx.log(), "New leader: {}, old: {}", leader, self.current_leader);
+                info!(self.ctx.log(), "New leader: {}, old: {}", leader, self.current_leader);
                 self.current_leader = leader;
                 let notify_client = if self.raft_replica.state == State::Election {
                     self.raft_replica.state = State::Running;
@@ -528,6 +527,7 @@ where
                 self.supervisor
                     .tell(RaftCompMsg::Leader(notify_client, leader));
                 */
+
                 self.raft_comp_receive_local_raftcompmsg_leader(notify_client, leader);
             }
         }
@@ -662,14 +662,14 @@ where
     fn raft_comp_receive_local_raftcompmsg_forwardreconfig(&mut self, leader_pid: u64, reconfig: (Vec<u64>, Vec<u64>)){
         //FIXED: pass leader_pid, reconfig to function
         self.current_leader = leader_pid;
-                let mut data: Vec<u8> = Vec::with_capacity(8);
-                data.put_u64(RECONFIG_ID);
-                let p = Proposal::reconfiguration(data, reconfig);
-                self.peers
-                    .get(&leader_pid)
-                    .expect("No actorpath to current leader")
-                    .tell_serialised(AtomicBroadcastMsg::Proposal(p), self)
-                    .expect("Should serialise")
+        let mut data: Vec<u8> = Vec::with_capacity(8);
+        data.put_u64(RECONFIG_ID);
+        let p = Proposal::reconfiguration(data, reconfig);
+        self.peers
+            .get(&leader_pid)
+            .expect("No actorpath to current leader")
+            .tell_serialised(AtomicBroadcastMsg::Proposal(p), self)
+            .expect("Should serialise")
     }
 
     fn raft_comp_receive_local_raftcompmsg_leader(&mut self, notify_client: bool, pid: u64) {
@@ -823,6 +823,7 @@ where
     type Message = RaftCompMsg;
 
     fn receive_local(&mut self, msg: Self::Message) -> Handled {
+        println!("RECIEVE LOCAL? Shoould never happen");
         match msg {
             RaftCompMsg::Leader(notify_client, pid) => {
 
@@ -880,8 +881,10 @@ where
     }
 
     fn receive_network(&mut self, m: NetMessage) -> Handled {
+        println!("RECIEVE NETWORK");
         match m.data.ser_id {
             ATOMICBCAST_ID => {
+                println!("ATOMICBCASTMSGGGGGG");
                 if !self.stopped {
                     if self.current_leader == self.pid || self.current_leader == 0 {
                         // if no leader, let raftcomp hold back
@@ -909,11 +912,11 @@ where
             }
             _ => {
                 let NetMessage { sender, data, .. } = m;
-                println!("pre match_deser!");
                 match_deser! {data {
                     msg(p): PartitioningActorMsg [using PartitioningActorSer] => {
                         match p {
                             PartitioningActorMsg::Init(init) => {
+                                println!("PARTITIONINGACTORMSG::INIT");
                                 info!(self.ctx.log(), "Raft got init, pid: {}", init.pid);
                                 self.current_leader = 0;
                                 self.iteration_id = init.init_id;
@@ -932,14 +935,16 @@ where
                                 return handled;
                             },
                             PartitioningActorMsg::Run => {
+                                println!("PARTITIONINGACTORMSG::RUN");
                                 self.start_components();
-                                //TODO: on_start logic for RaftReplica and Communicator(?)
+                                //FIXED: on_start logic for RaftReplica and Communicator(?)
                             },
                             _ => {},
                         }
                     },
                     msg(client_stop): NetStopMsg [using StopMsgDeser] => {
                         if let NetStopMsg::Client = client_stop {
+                            println!("NETSTOPMSG::CLIENT");
                             // info!(self.ctx.log(), "Got client stop");
                             //assert!(!self.stopped);
                             //return self.stop_components();
