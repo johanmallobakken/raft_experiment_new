@@ -442,7 +442,7 @@ impl Actor for Client {
             sender: _,
             receiver: _,
             data,
-            //session: _,
+            session: _,
         } = m;
         match_deser! {data {
             msg(am): AtomicBroadcastMsg [using AtomicBroadcastDeser] => {

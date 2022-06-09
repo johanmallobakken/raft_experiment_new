@@ -6,7 +6,7 @@ mod atomic_broadcast;
 
 extern crate raft as tikv_raft;
 use hashbrown::HashMap;
-use kompact::prelude::{KompactSystem, ActorPath, Recipient, KompactConfig, BufferConfig, Ask, promise, FutureCollection, NetworkConfig, DeadletterBox, Serialisable};
+use kompact::prelude::{KompactSystem, ActorPath, Recipient, KompactConfig, BufferConfig, Ask, promise, FutureCollection, NetworkConfig, DeadletterBox, Serialisable, SimulationScenario};
 
 use atomic_broadcast::{
     raft::{
@@ -47,7 +47,7 @@ impl Into<RaftCompMsg> for GetSequence {
     }
 }
 
-fn raft_normal_test() {
+fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
     println!("running test");
     let num_nodes = 3;
     let num_proposals = 1000;
@@ -76,14 +76,16 @@ fn raft_normal_test() {
     bc.validate();
     let tcp_no_delay = true;
     for i in 1..=num_nodes {
-        let system = atomic_broadcast::kompact_system_provider::global()
+        /*let system = atomic_broadcast::kompact_system_provider::global()
             .new_remote_system_with_threads_config(
                 format!("node{}", i),
                 1,
                 conf.clone(),
                 bc.clone(),
                 tcp_no_delay,
-            );
+            );*/
+        //TODO: Check if other argumenrs are needed like bufferconfig (bc) etc...
+        let system = simulation_scenario.spawn_system(conf.clone());
         let (actor_path, actor_ref) = match algorithm {
             "raft" => {
                 let voters = get_experiment_configs(last_node_id).0;
@@ -94,21 +96,23 @@ fn raft_normal_test() {
                     unknown => panic!("Got unknown Raft transfer policy: {}", unknown),
                 };
                 /*** Setup RaftComp ***/
-                let (raft_comp, unique_reg_f) = system.create_and_register(|| {
+                let (raft_comp, unique_reg_f) = simulation_scenario.create_and_register(&system, || {
                     RaftComp::<Storage>::with(
                         i,
                         voters,
                         reconfig_policy.unwrap_or(RaftReconfigurationPolicy::ReplaceFollower),
                     )
-                });
-                unique_reg_f.wait_expect(REGISTER_TIMEOUT, "RaftComp failed to register!");
-                let self_path = system
+                }, REGISTER_TIMEOUT);
+                //unique_reg_f.wait_expect(REGISTER_TIMEOUT, "RaftComp failed to register!");
+                let self_path = simulation_scenario.register_by_alias(&system, &raft_comp, RAFT_PATH, REGISTER_TIMEOUT);
+                /*let self_path = system
                     .register_by_alias(&raft_comp, RAFT_PATH)
-                    .wait_expect(REGISTER_TIMEOUT, "Communicator failed to register!");
-                let raft_comp_f = system.start_notify(&raft_comp);
+                    .wait_expect(REGISTER_TIMEOUT, "Communicator failed to register!");*/
+                simulation_scenario.start_notify(&system, &raft_comp, REGISTER_TIMEOUT);
+                /*let raft_comp_f = system.start_notify(&raft_comp);
                 raft_comp_f
                     .wait_timeout(REGISTER_TIMEOUT)
-                    .expect("RaftComp never started!");
+                    .expect("RaftComp never started!");*/
 
                 let r: Recipient<GetSequence> = raft_comp.actor_ref().recipient();
                 (self_path, r)
@@ -134,7 +138,8 @@ fn raft_normal_test() {
     let mut nc = NetworkConfig::with_buffer_config(addr, bc);
     nc.set_tcp_nodelay(tcp_no_delay);
     conf.system_components(DeadletterBox::new, nc.build());
-    let system = conf.build().expect("KompactSystem");
+    //TODO: See if something needs to change, see if this method can be applied when creating the node systems.
+    let system = simulation_scenario.spawn_system(conf); //conf.build().expect("KompactSystem");
 
     let mut nodes_id: HashMap<u64, ActorPath> = HashMap::new();
 
@@ -148,7 +153,7 @@ fn raft_normal_test() {
     // CREATE CLIENT
     /*** Setup client ***/
     let initial_config: Vec<_> = (1..=num_nodes).map(|x| x as u64).collect();
-    let (client_comp, unique_reg_f) = system.create_and_register(|| {
+    let (client_comp, unique_reg_f) = simulation_scenario.create_and_register(&system, || {
         Client::with(
             initial_config,
             num_proposals,
@@ -159,31 +164,29 @@ fn raft_normal_test() {
             leader_election_latch.clone(),
             finished_latch.clone(),
         )
-    });
-    unique_reg_f.wait_expect(REGISTER_TIMEOUT, "Client failed to register!");
-    let client_comp_f = system.start_notify(&client_comp);
-    client_comp_f
-        .wait_timeout(REGISTER_TIMEOUT)
-        .expect("ClientComp never started!");
-    let client_path = system
-        .register_by_alias(&client_comp, format!("client{}", &iteration_id))
-        .wait_expect(REGISTER_TIMEOUT, "Failed to register alias for ClientComp");
+    }, REGISTER_TIMEOUT);
+
+    //unique_reg_f.wait_expect(REGISTER_TIMEOUT, "Client failed to register!");
+    let client_comp_f = simulation_scenario.start_notify(&system, &client_comp, REGISTER_TIMEOUT);
+    let client_path = simulation_scenario
+        .register_by_alias(&system, &client_comp, format!("client{}", &iteration_id), REGISTER_TIMEOUT);
+    //    .wait_expect(REGISTER_TIMEOUT, "Failed to register alias for ClientComp");
 
     //PARTITIONING ACTOR
     let prepare_latch = Arc::new(CountdownEvent::new(1));
     /*** Setup partitioning actor ***/
-    let (partitioning_actor, unique_reg_f) = system.create_and_register(|| {
+    let (partitioning_actor, _) = simulation_scenario.create_and_register(&system, || {
         PartitioningActor::with(prepare_latch.clone(), None, iteration_id, actor_paths, None)
-    });
-    unique_reg_f.wait_expect(
+    }, Duration::from_millis(1000));
+    /*unique_reg_f.wait_expect(
         Duration::from_millis(1000),
         "PartitioningComp failed to register!",
-    );
+    );*/
 
-    let partitioning_actor_f = system.start_notify(&partitioning_actor);
-    partitioning_actor_f
+    let partitioning_actor_f = simulation_scenario.start_notify(&system, &partitioning_actor, Duration::from_millis(1000));
+    /*partitioning_actor_f
         .wait_timeout(Duration::from_millis(1000))
-        .expect("PartitioningComp never started!");
+        .expect("PartitioningComp never started!");*/
     let mut ser_client = Vec::<u8>::new();
     client_path
         .serialise(&mut ser_client)
@@ -191,13 +194,30 @@ fn raft_normal_test() {
     partitioning_actor
         .actor_ref()
         .tell(IterationControlMsg::Prepare(Some(ser_client)));
-    prepare_latch.wait();
+
+    while prepare_latch.count() > 0 {
+        simulation_scenario.simulate_step();
+    }
+
+    println!("AFTER PREPARE LATCH");
+
+    //prepare_latch.wait();
     partitioning_actor.actor_ref().tell(IterationControlMsg::Run);
-    leader_election_latch.wait(); 
+
+    while leader_election_latch.count() > 0 {
+        simulation_scenario.simulate_step();
+    }
+
+    println!("AFTER LEADER ELECTION LATCH");
+
+    //leader_election_latch.wait(); 
 
     client_comp.actor_ref().tell(LocalClientMessage::Run);
     println!("11111111111111111 PRE FINISHED LATCH 1111111111111111111111");
-    finished_latch.wait();
+    //finished_latch.wait();
+    while finished_latch.count() > 0 {
+        simulation_scenario.simulate_step();
+    }
     println!("11111111111111111 POST FINISHED LATCH 1111111111111111111111");
 
     let mut futures = vec![];
@@ -209,7 +229,10 @@ fn raft_normal_test() {
         futures.push(kfuture);
     }
 
+    println!("PRE SEQUENCE RESPONSES");
     let sequence_responses: Vec<_> = FutureCollection::collect_results::<Vec<_>>(futures);
+    println!("POST SEQUENCE RESPONSES");
+
     let quorum_size = num_nodes as usize / 2 + 1;
     check_quorum(&sequence_responses, quorum_size, num_proposals);
     check_validity(&sequence_responses, num_proposals);
@@ -267,7 +290,10 @@ fn raft_normal_test() {
         .expect("Kompact didn't shut down properly");
 }
 
+pub struct RaftState {}
+
 fn main() {
-    raft_normal_test()
+    let mut simulation_scenario: SimulationScenario<RaftState> = SimulationScenario::new();
+    raft_normal_test(simulation_scenario)
 }
 //Executing task: cargo run --package kompact_benchmarks --bin kompact_benchmarks 

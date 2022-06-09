@@ -298,11 +298,14 @@ where
             .as_i64()
             .expect("Failed to load tick_period") as u64;
         //println!("STARTING TIMERRRRRRRRRRRRRRRRRRRR");
-        let ready_timer = self.schedule_periodic(DELAY, outgoing_period, move |c, _| c.on_ready());
-        let tick_timer =
-            self.schedule_periodic(DELAY, Duration::from_millis(tick_period), move |rc, _| {
-                rc.tick()
-            });
+        let ready_timer = self.schedule_periodic(DELAY, outgoing_period, move |c, _| {
+            //println!("SCHEDULED PERIODICCCCCCC ready_timer");
+            c.on_ready()
+        });
+        let tick_timer = self.schedule_periodic(DELAY, Duration::from_millis(tick_period), move |rc, _| {
+            //println!("SCHEDULED PERIODICCCCCCC tick_timer");
+            rc.tick()
+        });
         self.timers = Some((ready_timer, tick_timer));
     }
 
@@ -536,6 +539,7 @@ where
     }
 
     fn tick(&mut self) -> Handled {
+        //println!("TICKKKKKKKKK");
         self.raft_replica.raw_raft.tick();
         let leader = self.raft_replica.raw_raft.raft.leader_id;
         //println!("leader id: {}", leader);
