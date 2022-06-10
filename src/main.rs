@@ -52,9 +52,9 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
     let num_nodes = 3;
     let num_proposals = 1000;
     let concurrent_proposals = 200;
-    let reconfiguration = "off";
-    let reconfig_policy = "none";
-    let algorithm = "raft";
+    //let reconfiguration = "off";
+    //let reconfig_policy = "none";
+    //let algorithm = "raft";
     let last_node_id = num_nodes;
     let iteration_id = 1;
     /*run_experiment(
@@ -72,9 +72,9 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
     let mut actor_refs = Vec::with_capacity(num_nodes as usize);
     let mut conf = KompactConfig::default();
     conf.load_config_file(CONFIG_PATH);
-    let bc = BufferConfig::from_config_file(CONFIG_PATH);
-    bc.validate();
-    let tcp_no_delay = true;
+    //let bc = BufferConfig::from_config_file(CONFIG_PATH);
+    //bc.validate();
+    //let tcp_no_delay = true;
     for i in 1..=num_nodes {
         /*let system = atomic_broadcast::kompact_system_provider::global()
             .new_remote_system_with_threads_config(
@@ -86,39 +86,39 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
             );*/
         //TODO: Check if other argumenrs are needed like bufferconfig (bc) etc...
         let system = simulation_scenario.spawn_system(conf.clone());
-        let (actor_path, actor_ref) = match algorithm {
-            "raft" => {
-                let voters = get_experiment_configs(last_node_id).0;
-                let reconfig_policy = match reconfig_policy {
+        //let (actor_path, actor_ref) = match algorithm {
+        //    "raft" => {
+        let voters = get_experiment_configs(last_node_id).0;
+                /*let reconfig_policy = match reconfig_policy {
                     "none" => None,
                     "replace-leader" => Some(RaftReconfigurationPolicy::ReplaceLeader),
                     "replace-follower" => Some(RaftReconfigurationPolicy::ReplaceFollower),
                     unknown => panic!("Got unknown Raft transfer policy: {}", unknown),
-                };
+                };*/
                 /*** Setup RaftComp ***/
-                let (raft_comp, unique_reg_f) = simulation_scenario.create_and_register(&system, || {
-                    RaftComp::<Storage>::with(
-                        i,
-                        voters,
-                        reconfig_policy.unwrap_or(RaftReconfigurationPolicy::ReplaceFollower),
-                    )
-                }, REGISTER_TIMEOUT);
-                //unique_reg_f.wait_expect(REGISTER_TIMEOUT, "RaftComp failed to register!");
-                let self_path = simulation_scenario.register_by_alias(&system, &raft_comp, RAFT_PATH, REGISTER_TIMEOUT);
-                /*let self_path = system
-                    .register_by_alias(&raft_comp, RAFT_PATH)
-                    .wait_expect(REGISTER_TIMEOUT, "Communicator failed to register!");*/
-                simulation_scenario.start_notify(&system, &raft_comp, REGISTER_TIMEOUT);
-                /*let raft_comp_f = system.start_notify(&raft_comp);
-                raft_comp_f
-                    .wait_timeout(REGISTER_TIMEOUT)
-                    .expect("RaftComp never started!");*/
+        let (raft_comp, unique_reg_f) = simulation_scenario.create_and_register(&system, || {
+            RaftComp::<Storage>::with(
+                i,
+                voters,
+                RaftReconfigurationPolicy::ReplaceFollower, //reconfig_policy.unwrap_or(RaftReconfigurationPolicy::ReplaceFollower),
+            )
+        }, REGISTER_TIMEOUT);
+        //unique_reg_f.wait_expect(REGISTER_TIMEOUT, "RaftComp failed to register!");
+        let actor_path = simulation_scenario.register_by_alias(&system, &raft_comp, RAFT_PATH, REGISTER_TIMEOUT);
+        /*let self_path = system
+            .register_by_alias(&raft_comp, RAFT_PATH)
+            .wait_expect(REGISTER_TIMEOUT, "Communicator failed to register!");*/
+        simulation_scenario.start_notify(&system, &raft_comp, REGISTER_TIMEOUT);
+        /*let raft_comp_f = system.start_notify(&raft_comp);
+        raft_comp_f
+            .wait_timeout(REGISTER_TIMEOUT)
+            .expect("RaftComp never started!");*/
 
-                let r: Recipient<GetSequence> = raft_comp.actor_ref().recipient();
-                (self_path, r)
-            }
-            unknown => panic!("Got unknown algorithm: {}", unknown),
-        };
+        let actor_ref: Recipient<GetSequence> = raft_comp.actor_ref().recipient();
+        //        (actor_path, actor_ref)
+        //    }
+        //    unknown => panic!("Got unknown algorithm: {}", unknown),
+        //};
         systems.push(system);
         actor_paths.push(actor_path);
         actor_refs.push(actor_ref);
@@ -127,17 +127,17 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
     //CREATE CLIENT SYSTEM
 
     let mut conf = KompactConfig::default();
-    conf.load_config_file(CONFIG_PATH);
-    let bc = BufferConfig::from_config_file(CONFIG_PATH);
-    bc.validate();
-    let tcp_no_delay = true;
-    let addr = SocketAddr::new("127.0.0.1".parse().unwrap(), 0);
-    conf.threads(1);
+    //conf.load_config_file(CONFIG_PATH);
+    //let bc = BufferConfig::from_config_file(CONFIG_PATH);
+    //bc.validate();
+    //let tcp_no_delay = true;
+    //let addr = SocketAddr::new("127.0.0.1".parse().unwrap(), 0);
+    //conf.threads(1);
     //Self::set_executor_for_threads(threads, &mut conf);
-    conf.throughput(50);
-    let mut nc = NetworkConfig::with_buffer_config(addr, bc);
-    nc.set_tcp_nodelay(tcp_no_delay);
-    conf.system_components(DeadletterBox::new, nc.build());
+    //conf.throughput(50);
+    //let mut nc = NetworkConfig::with_buffer_config(addr, bc);
+    //nc.set_tcp_nodelay(tcp_no_delay);
+    //conf.system_components(DeadletterBox::new, nc.build());
     //TODO: See if something needs to change, see if this method can be applied when creating the node systems.
     let system = simulation_scenario.spawn_system(conf); //conf.build().expect("KompactSystem");
 
@@ -254,13 +254,13 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
     if concurrent_proposals == 1 || cfg!(feature = "track_latency") {
         //persist_latency_results(&meta_results.latencies);
     }
-    #[cfg(feature = "track_timestamps")]
+    /*#[cfg(feature = "track_timestamps")]
     {
         let (timestamps, leader_changes_t) = meta_results
             .timestamps_leader_changes
             .expect("No timestamps results!");
         self.persist_timestamp_results(&timestamps, &leader_changes_t);
-    }
+    }*/
 
     let kill_client_f = system.kill_notify(client_comp);
     kill_client_f
@@ -274,9 +274,9 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
 
     println!("Cleaning up last iteration");
     //persist_timeouts_summary();
-    if concurrent_proposals == 1 || cfg!(feature = "track_latency") {
+    /*if concurrent_proposals == 1 || cfg!(feature = "track_latency") {
         //persist_latency_summary();
-    }
+    }*/
     /* 
     self.num_nodes = None;
     self.reconfiguration = None;
