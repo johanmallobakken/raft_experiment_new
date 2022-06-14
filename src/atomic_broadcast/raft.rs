@@ -84,7 +84,7 @@ where
     S: RaftStorage + Send + Clone + 'static,
 {}
 
-struct RaftReplica<S>
+pub struct RaftReplica<S>
 where
     S: RaftStorage + Send + Clone + 'static,
 {
@@ -92,7 +92,7 @@ where
     //ctx: ComponentContext<Self>,
     //supervisor: ActorRef<RaftCompMsg>,
     state: State,
-    raw_raft: RawNode<S>,
+    pub raw_raft: RawNode<S>,
     //communication_port: RequiredPort<CommunicationPort>,
     //timers: Option<(ScheduledTimer, ScheduledTimer)>,
     reconfig_state: ReconfigurationState,
@@ -148,7 +148,7 @@ where
     cached_client: Option<ActorPath>,
     current_leader: u64,
     reconfig_policy: ReconfigurationPolicy,
-    raft_replica: RaftReplica<S>,
+    pub raft_replica: RaftReplica<S>,
     timers: Option<(ScheduledTimer, ScheduledTimer)>,
 }
 
@@ -661,6 +661,7 @@ where
         let mut sequence: Vec<u64> = Vec::with_capacity(raft_entries.len());
         let mut unique = HashSet::new();
         //println!("pre for entry in raft entries?????");
+        println!("IN NODE RECEIVED SEQUENCE RESP MSG");
         for entry in raft_entries {
             if entry.get_entry_type() == EntryType::EntryNormal && !&entry.data.is_empty() {
                 let id = entry.data.as_slice().get_u64();
@@ -929,6 +930,8 @@ where
                 //return self.kill_components(ask);
             }
             RaftCompMsg::GetSequence(ask) => {
+                println!("IN NODE RECEIVED SEQUENCE RESP MSG PRE FUNCTION CALL");
+
 
                 println!("GET SEQUENCE REQQQQQQ");
                 self.raft_replica_receive_local_raftreplicamsg_sequencereq(ask);
