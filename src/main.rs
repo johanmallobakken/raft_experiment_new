@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, time::Duration, sync::Arc, borrow::BorrowMut};
+use std::{net::SocketAddr, time::Duration, sync::Arc, borrow::BorrowMut, fmt::Display};
 
 use crate::atomic_broadcast::{atomic_broadcast::{run_experiment, check_quorum, check_validity, check_uniform_agreement}, partitioning_actor::IterationControlMsg, client::LocalClientMessage};
 
@@ -6,7 +6,7 @@ mod atomic_broadcast;
 
 extern crate raft as tikv_raft;
 use hashbrown::HashMap;
-use kompact::prelude::{KompactSystem, ActorPath, Recipient, KompactConfig, BufferConfig, Ask, promise, FutureCollection, NetworkConfig, DeadletterBox, Serialisable, SimulationScenario, SimulatedScheduling, GetState, Invariant};
+use kompact::prelude::{KompactSystem, ActorPath, Recipient, KompactConfig, BufferConfig, Ask, promise, FutureCollection, NetworkConfig, DeadletterBox, Serialisable, SimulationScenario, SimulatedScheduling, GetState, Component, SimulationError, Invariant};
 
 use atomic_broadcast::{
     raft::{
@@ -51,44 +51,62 @@ impl Into<RaftCompMsg> for GetSequence {
 
 #[derive(Debug)]
 pub struct RaftState{
+    id: u64,
     term: u64,
     vote: u64, //?
-    id: u64,
     state: StateRole,
     leader_id: u64,
     //RAFT LOG
-    log_entries: Vec<Entry>,
+    //log_entries: Vec<Entry>,
+    log_entries_len: usize,
     //log_unstable: Unstable,
     log_committed: u64,
     log_applied: u64
 }
 
-impl GetState<RaftState> for RaftComp<Storage> {
+impl Display for RaftState{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl GetState<RaftState> for Component<RaftComp<Storage>> {
     fn get_state(&self) -> RaftState {
 
-        let log = self.raft_replica.raw_raft.raft.raft_log.store.clone();
-        let entries = log.entries(log.first_index().unwrap(), log.last_index().unwrap(), 9999).unwrap();
+        let def = &self.mutable_core.lock().unwrap().definition;
+
+        let log = def.raft_replica.raw_raft.raft.raft_log.store.clone();
+
+        let mut entries:Vec<Entry> = vec![];
+
+        if log.last_index().unwrap() > 1 {
+            //println!("{}", log.last_index().unwrap());
+            entries = log.entries(log.first_index().unwrap(), log.last_index().unwrap(), 9999).unwrap();
+        }
 
         RaftState{
-            term: self.raft_replica.raw_raft.raft.term,
-            vote: self.raft_replica.raw_raft.raft.vote,
-            id: self.raft_replica.raw_raft.raft.id,
-            state: self.raft_replica.raw_raft.raft.state,
-            leader_id: self.raft_replica.raw_raft.raft.leader_id,
+            id: def.raft_replica.raw_raft.raft.id,
+            term: def.raft_replica.raw_raft.raft.term,
+            vote: def.raft_replica.raw_raft.raft.vote,
+            state: def.raft_replica.raw_raft.raft.state,
+            leader_id: def.raft_replica.raw_raft.raft.leader_id,
             //RAFT LOG
-            log_entries: entries,
+            log_entries_len: entries.len(),
             //log_unstable: self.raft_replica.raw_raft.raft.raft_log.unstable.copy(),
-            log_committed: self.raft_replica.raw_raft.raft.raft_log.committed,
-            log_applied: self.raft_replica.raw_raft.raft.raft_log.applied,
+            log_committed: def.raft_replica.raw_raft.raft.raft_log.committed,
+            log_applied: def.raft_replica.raw_raft.raft.raft_log.applied,
         }
     }
 }
 
-fn print_all_raft_states(components: Vec<RaftComp<MemStorage>>){
+
+
+fn print_all_raft_states(components: Vec<Component<RaftComp<MemStorage>>>){
     for component in components {
         println!("{:?}", component.get_state());
     }
 }
+
 fn todo_raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
     todo!()
     //Simulation config 5
@@ -102,7 +120,7 @@ fn todo_raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>)
 fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
     let num_nodes = 3;
     let num_proposals = 1000;
-    let concurrent_proposals = 200;
+    let concurrent_proposals = 1;
     let last_node_id = num_nodes;
     let iteration_id = 1;
 
@@ -124,6 +142,10 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
                 RaftReconfigurationPolicy::ReplaceFollower,
             )
         }, REGISTER_TIMEOUT);
+
+
+        let get_state = raft_comp.clone() as Arc<dyn GetState<RaftState>>;
+        simulation_scenario.monitor_actor(get_state);
 
         let actor_path = simulation_scenario.register_by_alias(&system, &raft_comp, RAFT_PATH, REGISTER_TIMEOUT);
         simulation_scenario.start_notify(&system, &raft_comp, REGISTER_TIMEOUT);
@@ -179,6 +201,7 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
     client_path
         .serialise(&mut ser_client)
         .expect("Failed to serialise ClientComp actorpath");
+
     partitioning_actor
         .actor_ref()
         .tell(IterationControlMsg::Prepare(Some(ser_client)));
@@ -186,6 +209,9 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
     while prepare_latch.count() > 0 {
         simulation_scenario.simulate_step();
     }
+    
+    let post_prepare_count = simulation_scenario.get_simulation_step_count();
+
 
     partitioning_actor.actor_ref().tell(IterationControlMsg::Run);
 
@@ -193,10 +219,37 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
         simulation_scenario.simulate_step();
     }
 
-    client_comp.actor_ref().tell(LocalClientMessage::Run);
+    //client_comp.actor_ref().tell(LocalClientMessage::Run);
+
+    let post_leader_election_count = simulation_scenario.get_simulation_step_count();
+    //println!("POST LEADER ELECTION: {}", post_leader_election_count);
+
+
+    /* 
+    println!("CLOGGING SYSTEMMMMMMMMMMMM NOOOOOOWWW");
+    println!("CLOGGING SYSTEMMMMMMMMMMMM NOOOOOOWWW");
+    println!("CLOGGING SYSTEMMMMMMMMMMMM NOOOOOOWWW");
+    println!("CLOGGING SYSTEMMMMMMMMMMMM NOOOOOOWWW");
+    println!("CLOGGING SYSTEMMMMMMMMMMMM NOOOOOOWWW");
+
+
+    let invariant = RaftInvariantChecker{};
+    let invariant_idx = simulation_scenario.monitor_invariant(Arc::new(invariant));
+    while simulation_scenario.check_invariant_on_index(invariant_idx).is_err() {
+        simulation_scenario.simulate_step();
+    }
+
+    //simulation_scenario.print_simulation_step_count();
+    simulation_scenario.clog_system(systems[0].clone());
+    */
+
+    
     while finished_latch.count() > 0 {
         simulation_scenario.simulate_step();
     }
+
+    let post_finished_latch = simulation_scenario.get_simulation_step_count();
+
 
     //let mut sequence_responses: Vec<SequenceResp> = vec![];
 
@@ -269,6 +322,11 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
 
     println!("system shutdown");
 
+    println!("Post prepare: {}", post_prepare_count);
+    println!("Post leader: {}", post_leader_election_count);
+    println!("Post finished: {}", post_finished_latch);
+
+
     system
         .shutdown()
         .expect("Kompact didn't shut down properly");
@@ -276,12 +334,27 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
 
 struct RaftInvariantChecker{}
 
-impl<RaftState> Invariant<RaftState> for RaftInvariantChecker{
- fn check(){
+impl RaftInvariantChecker {
+    fn log_length_more_or_eq_500(states: Vec<RaftState>) -> bool{
+        for state in states {
+            if state.log_entries_len < 500 {
+                return false;
+            }
+        }
+        return true;
+    }
+} 
 
- }
-
+impl Invariant<RaftState> for RaftInvariantChecker{
+    fn check(&self, state: Vec<RaftState>) -> Result<(), SimulationError> {
+        if RaftInvariantChecker::log_length_more_or_eq_500(state){
+            Ok(())
+        } else {
+            Err(SimulationError{})
+        }
+    }
 }
+
 
 fn main() {
     let mut simulation_scenario: SimulationScenario<RaftState> = SimulationScenario::new();

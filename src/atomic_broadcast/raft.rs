@@ -310,17 +310,30 @@ where
     }
 
     fn on_ready(&mut self) -> Handled {
-        //println!("ON READYYYY");
 
-        //println!("ON READYYYY INSIDE");
+        //println!("on_ready {}", self.pid);
+
+        //Check if has ready, if not we just return 
         
         if !self.raft_replica.raw_raft.has_ready() {
             return Handled::Ok;
         }
+
+        //Get store and ready
+
         let mut store = self.raft_replica.raw_raft.raft.raft_log.store.clone();
 
         // Get the `Ready` with `RawNode::ready` interface.
         let mut ready = self.raft_replica.raw_raft.ready();
+
+        //Step 1: Check snapshot
+
+        // Apply the snapshot. It's necessary because in `RawNode::advance` we stabilize the snapshot.
+        if *ready.snapshot() != Snapshot::default() {
+            unimplemented!("Should not be any snapshots to handle!");
+        }
+
+        //Step 2: Check entries
 
         // Persistent raft logs. It's necessary because in `RawNode::advance` we stabilize
         // raft logs to the latest position.
@@ -331,11 +344,6 @@ where
                 format!("persist raft log fail: {:?}, need to retry or panic", e)
             );
             return Handled::Ok;
-        }
-
-        // Apply the snapshot. It's necessary because in `RawNode::advance` we stabilize the snapshot.
-        if *ready.snapshot() != Snapshot::default() {
-            unimplemented!("Should not be any snapshots to handle!");
         }
 
         //FIXED: send messages from here, replacing communicator logic TRIGGER RAFT REPLICA LOGIC WHEN RECIEVING CommunicatorMsg::RawRaftMsg
@@ -386,6 +394,7 @@ where
                     let mut cc = ConfChange::default();
                     cc.merge_from_bytes(&entry.data).unwrap();
                     let change_type = cc.get_change_type();
+                    println!("CHANGE TYPE: {:?}", change_type);
                     match &change_type {
                         ConfChangeType::BeginMembershipChange => {
                             let reconfig = cc.get_configuration();
@@ -502,7 +511,7 @@ where
     }
 
     fn try_campaign_leader(&mut self) -> Handled {
-        //println!("try_campaign_leader!!!!!!!!!");
+        println!("try_campaign_leader!!!!!!!!!");
         // start campaign to become leader if none has been elected yet
         let leader = self.raft_replica.raw_raft.raft.leader_id;
         if leader == 0 && self.raft_replica.state == State::Election {
@@ -546,20 +555,24 @@ where
         if leader != 0 {
             //println!("LEADER NOT EQUAL TO 0");
             if !self.raft_replica.hb_proposals.is_empty() {
+                println!("HB PROPOSAL IS NOT EMPTY");
                 let proposals = std::mem::take(&mut self.raft_replica.hb_proposals);
                 for proposal in proposals {
                     self.propose(proposal);
                 }
             }
             if leader != self.current_leader {
-                //info!(self.ctx.log(), "New leader: {}, old: {}", leader, self.current_leader);
+                info!(self.ctx.log(), "New leader: {}, old: {}", leader, self.current_leader);
                 self.current_leader = leader;
-                let notify_client = if self.raft_replica.state == State::Election {
+                /*let notify_client = if self.raft_replica.state == State::Election {
+                    println!("state was election, notifying client");
                     self.raft_replica.state = State::Running;
                     true
                 } else {
+                    println!("state was NOT election, NOT notifying client");
                     false
-                };
+                };*/
+                self.raft_replica.state = State::Running;
 
                 //FIXED: Simply trigger logic for RaftCompMsg::Leader here
                 /* 
@@ -567,7 +580,7 @@ where
                     .tell(RaftCompMsg::Leader(notify_client, leader));
                 */
 
-                self.raft_comp_receive_local_raftcompmsg_leader(notify_client, leader);
+                self.raft_comp_receive_local_raftcompmsg_leader(true, leader);
             }
         }
         Handled::Ok
@@ -575,6 +588,7 @@ where
 
     fn propose(&mut self, proposal: Proposal) {
         if self.raft_replica.raw_raft.raft.leader_id == 0 {
+            println!("leader = 0");
             self.raft_replica.hb_proposals.push(proposal);
             return;
         }
@@ -897,6 +911,8 @@ where
         match msg {
             RaftCompMsg::Leader(notify_client, pid) => {
 
+                println!("RECEIVED LEADER ELECTION, leader election: {}", notify_client);
+
                 self.raft_comp_receive_local_raftcompmsg_leader(notify_client, pid);
 
                 //FIXED: move logic to function
@@ -1017,7 +1033,9 @@ where
                     },
                     msg(r): Message [using RawRaftSer] => {
                         //TODO: trigger rawraft on recieve logic
-                        //println!("RECEIVED RAWRAFTSER WOHOOOOOOOOOO");
+                        //if self.pid == 2 {
+                            //println!("RECEIVED RAWRAFTSER WOHOOOOOOOOOO");
+                        //}
                         self.raft_replica_handle_atomicbroadcastcompmsg_rawraftmsg(r);
                     },
                     msg(stop): NetStopMsg [using StopMsgDeser] => {

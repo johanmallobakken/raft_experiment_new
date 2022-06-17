@@ -154,6 +154,7 @@ impl Client {
         let mut data: Vec<u8> = Vec::with_capacity(8);
         data.put_u64(id);
         let p = Proposal::normal(data);
+        //println!("propose to addr: {}", node.address());
         node.tell_serialised(AtomicBroadcastMsg::Proposal(p), self)
             .expect("Should serialise Proposal");
     }
@@ -449,31 +450,34 @@ impl Actor for Client {
                 // info!(self.ctx.log(), "Handling {:?}", am);
                 match am {
                     AtomicBroadcastMsg::FirstLeader(pid) => {
-                        //println!("FIRST LEADER");
+                        println!("GOT LEADER ALERT");
+                        println!("self.state: {:?}", self.state);
                         if !self.current_config.contains(&pid) { return Handled::Ok; }
-                        match self.state {
-                            ExperimentState::LeaderElection => {
-                                self.current_leader = pid;
-                                
-                                self.state = ExperimentState::Running;
-                                assert_ne!(self.current_leader, 0);
-                                #[cfg(feature = "track_timestamps")]
-                                {
-                                    let now = self.clock.now();
-                                    self.start = Some(now);
-                                    self.leader_changes.push(self.current_leader);
-                                    self.leader_changes_t.push(now);
-                                }
-                                self.send_concurrent_proposals();
+                        //match self.state {
+                        //    ExperimentState::LeaderElection => {
+                        self.current_leader = pid;
+                        
+                        self.state = ExperimentState::Running;
+                        assert_ne!(self.current_leader, 0);
+                        #[cfg(feature = "track_timestamps")]
+                        {
+                            let now = self.clock.now();
+                            self.start = Some(now);
+                            self.leader_changes.push(self.current_leader);
+                            self.leader_changes_t.push(now);
+                        }
+                        self.send_concurrent_proposals();
 
-                                match self.leader_election_latch.decrement() {
-                                    Ok(_) => info!(self.ctx.log(), "Got first leader: {}", pid),
-                                    Err(e) => if e != CountdownError::AlreadySet {
-                                        panic!("Failed to decrement election latch: {:?}", e);
-                                    }
+                        if self.leader_election_latch.count() > 0{
+                            match self.leader_election_latch.decrement() {
+                                Ok(_) => info!(self.ctx.log(), "Got first leader: {}", pid),
+                                Err(e) => if e != CountdownError::AlreadySet {
+                                    panic!("Failed to decrement election latch: {:?}", e);
                                 }
-                            },
-                            ExperimentState::ReconfigurationElection => {
+                            }
+                        }
+                        //    },
+                            /*ExperimentState::ReconfigurationElection => {
                                 if self.current_leader != pid {
                                     // info!(self.ctx.log(), "Got leader in ReconfigElection: {}. old: {}", pid, self.current_leader);
                                     self.current_leader = pid;
@@ -487,9 +491,9 @@ impl Actor for Client {
                                     self.first_proposal_after_reconfig = Some(self.latest_proposal_id);
                                 }
                                 self.send_concurrent_proposals();
-                            },
-                            _ => {},
-                        }
+                            },*/
+                        //    _ => {},
+                        //}
                     },
                     AtomicBroadcastMsg::ProposalResp(pr) => {
                         if self.state == ExperimentState::Finished || self.state == ExperimentState::LeaderElection { return Handled::Ok; }
