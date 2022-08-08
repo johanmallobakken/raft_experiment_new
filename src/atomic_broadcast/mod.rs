@@ -1,6 +1,6 @@
 pub mod atomic_broadcast;
 pub(crate) mod client;
-mod messages;
+pub(crate) mod messages;
 pub(crate) mod raft;
 mod storage;
 pub(crate) mod partitioning_actor;

@@ -475,6 +475,7 @@ where
                             //FIXED: Send messages from here replacing communicator logic SEND TO CLIENT
                             /*self.communication_port
                                 .trigger(CommunicatorMsg::ProposalResponse(pr));*/
+                            println!("478 proposal resp sent");
                             self.cached_client
                                 .as_ref()
                                 .expect("No cached client!")
@@ -491,6 +492,7 @@ where
                         //FIXED: Send messages from here replacing communicator logic, SEND TO CLIENT
                         /*self.communication_port
                             .trigger(CommunicatorMsg::ProposalResponse(pr));*/
+                        println!("495 proposal resp sent");
                         self.cached_client
                             .as_ref()
                             .expect("No cached client!")

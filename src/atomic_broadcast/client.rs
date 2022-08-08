@@ -8,7 +8,7 @@ use kompact::prelude::*;
 use quanta::{Clock, Instant};
 use std::{
     sync::Arc,
-    time::{Duration, SystemTime},
+    time::{Duration, SystemTime}, borrow::BorrowMut,
 };
 use synchronoise::{event::CountdownError, CountdownEvent};
 
@@ -23,6 +23,7 @@ enum ExperimentState {
 #[derive(Debug)]
 pub enum LocalClientMessage {
     Run,
+    Propose(u64),
     Stop(Ask<(), MetaResults>), // (num_timed_out, latency)
 }
 
@@ -230,6 +231,7 @@ impl Client {
             }
             for (id, start_time) in retry_proposals {
                 self.propose_normal(id, &leader);
+                println!("RETRY PROPOSAL TIMEOUT");
                 let timer = self.schedule_once(self.timeout, move |c, _| c.proposal_timeout(id));
                 let meta = ProposalMetaData::with(start_time, timer);
                 self.pending_proposals.insert(id, meta);
@@ -238,7 +240,7 @@ impl Client {
     }
 
     fn handle_normal_response(&mut self, id: u64, latency_res: Option<Duration>) {
-        //println!("Got response {}!!!!!", id);
+        println!("Got response {}!!!!!", id);
         #[cfg(feature = "track_timestamps")]
         {
             let timestamp = self.clock.now();
@@ -248,6 +250,7 @@ impl Client {
         let received_count = self.responses.len() as u64;
         if received_count == self.num_proposals && self.reconfig.is_none() {
             self.state = ExperimentState::Finished;
+            //println!("decrement finished latch 253 handle normal response");
             self.finished_latch
                 .decrement()
                 .expect("Failed to countdown finished latch");
@@ -282,6 +285,7 @@ impl Client {
             if let Some(leader) = self.nodes.get(&self.current_leader) {
                 self.propose_reconfiguration(&leader);
             }
+            println!("HANDLE NORMAL RESPONSE PROPOSAL TIMEOUT");
             let timer =
                 self.schedule_once(self.timeout, move |c, _| c.proposal_timeout(RECONFIG_ID));
             let proposal_meta = ProposalMetaData::with(None, timer);
@@ -307,6 +311,7 @@ impl Client {
             ));
             proposal_meta.set_timer(timer);
         } else {
+            println!("proposal timed out");
             self.num_timed_out += 1;
             let proposal_meta = self
                 .pending_proposals
@@ -432,6 +437,17 @@ impl Actor for Client {
                 self.send_stop();
                 self.stop_ask = Some(a);
             }
+            LocalClientMessage::Propose(id) => {
+                let mut data: Vec<u8> = Vec::with_capacity(8);
+                data.put_u64(id);
+                let p = Proposal::normal(data);
+                let leader = self.nodes.get(&self.current_leader).unwrap().clone();
+                leader.tell_serialised(AtomicBroadcastMsg::Proposal(p), self).expect("Should serialise Proposal");
+                println!("sending propose prooposal timeout");
+                let timer = self.schedule_once(self.timeout, move |c, _| c.proposal_timeout(id));
+                let proposal_meta = ProposalMetaData::with(Some(SystemTime::now()), timer);
+                self.pending_proposals.insert(id, proposal_meta);
+            }
         }
         Handled::Ok
     }
@@ -450,7 +466,17 @@ impl Actor for Client {
                 // info!(self.ctx.log(), "Handling {:?}", am);
                 match am {
                     AtomicBroadcastMsg::FirstLeader(pid) => {
-                        println!("GOT LEADER ALERT");
+                        match self.state {
+                            ExperimentState::LeaderElection=>{
+                                self.current_leader=pid;
+                                self.state=ExperimentState::Running;
+                                assert_ne!(self.current_leader,0);
+                            }
+                            ExperimentState::Running => println!("Recieve network Running"),
+                            ExperimentState::ReconfigurationElection => println!("Recieve network ReconfigurationElection"),
+                            ExperimentState::Finished => println!("Recieve network Finished"), 
+                        }
+                        /*println!("GOT LEADER ALERT");
                         println!("self.state: {:?}", self.state);
                         if !self.current_config.contains(&pid) { return Handled::Ok; }
                         //match self.state {
@@ -466,8 +492,10 @@ impl Actor for Client {
                             self.leader_changes.push(self.current_leader);
                             self.leader_changes_t.push(now);
                         }
-                        self.send_concurrent_proposals();
+                        self.send_concurrent_proposals();*/
 
+                        //TODO: send proposals one by one through the main function instead. 
+                        self.current_leader = pid;
                         if self.leader_election_latch.count() > 0{
                             match self.leader_election_latch.decrement() {
                                 Ok(_) => info!(self.ctx.log(), "Got first leader: {}", pid),
@@ -496,11 +524,19 @@ impl Actor for Client {
                         //}
                     },
                     AtomicBroadcastMsg::ProposalResp(pr) => {
-                        if self.state == ExperimentState::Finished || self.state == ExperimentState::LeaderElection { return Handled::Ok; }
+                        println!("PROPOSAL RESP RECEIVED");
+                        if self.state == ExperimentState::Finished || self.state == ExperimentState::LeaderElection { 
+                            //println!("self.state finished?: {}", self.state == ExperimentState::Finished);
+                            //println!("self.state LeaderElection?: {}", self.state == ExperimentState::LeaderElection);
+                            return Handled::Ok; 
+                        }
                         let data = pr.data;
                         let response = Self::deserialise_response(&mut data.as_slice());
+
                         match response {
                             Response::Normal(id) => {
+                                println!("normal response");
+                                println!("RESPONSE IS {}", id);
                                 if let Some(proposal_meta) = self.pending_proposals.remove(&id) {
                                     let latency = match proposal_meta.start_time {
                                         Some(start_time) => Some(start_time.elapsed().expect("Failed to get elapsed duration")),
@@ -530,10 +566,13 @@ impl Actor for Client {
                                 }
                             }
                             Response::Reconfiguration(new_config) => {
+                                println!("reconfig response");
+                                println!("RESPONSE len IS {}", new_config.len());
                                 if let Some(proposal_meta) = self.pending_proposals.remove(&RECONFIG_ID) {
                                     self.cancel_timer(proposal_meta.timer);
                                     if self.responses.len() as u64 == self.num_proposals {
                                         self.state = ExperimentState::Finished;
+                                        println!("decrement finished latch 564 response reconfig");
                                         self.finished_latch.decrement().expect("Failed to countdown finished latch");
                                         info!(self.ctx.log(), "Got reconfig at last. {} proposals timed out. Leader changes: {}, {:?}, Last leader was: {}", self.num_timed_out, self.leader_changes.len(), self.leader_changes, self.current_leader);
                                     } else {
