@@ -9,21 +9,21 @@ use super::serialiser_ids;
 use super::client::Client;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-    pub enum KVOperation {
-        ReadInvokation,
-        ReadResponse,
-        WriteInvokation,
-        WriteResponse,
-    }
+pub enum KVOperation {
+    ReadInvokation,
+    ReadResponse,
+    WriteInvokation,
+    WriteResponse,
+}
 
-    #[derive(Clone, Copy, Debug)]
-    pub struct KVTimestamp {
-        pub key:       u64,
-        pub operation: KVOperation,
-        pub value:     Option<u32>,
-        pub time:      i64,
-        pub sender:    u32,
-    }
+#[derive(Clone, Copy, Debug)]
+pub struct KVTimestamp {
+    pub key:       u64,
+    pub operation: KVOperation,
+    pub value:     Option<u32>,
+    pub time:      i64,
+    pub sender:    u32,
+}
 
 
 #[derive(ComponentDefinition)]

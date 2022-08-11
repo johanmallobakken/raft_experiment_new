@@ -2,123 +2,123 @@
 RaftState { id: 1, term: 1, vote: 0, state: Follower, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
 RaftState { id: 2, term: 1, vote: 0, state: Follower, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
 RaftState { id: 3, term: 1, vote: 0, state: Follower, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-5434
+5133
 RaftState { id: 1, term: 1, vote: 0, state: Follower, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-RaftState { id: 2, term: 1, vote: 0, state: Follower, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-RaftState { id: 3, term: 2, vote: 3, state: Candidate, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-5439
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-RaftState { id: 2, term: 1, vote: 0, state: Follower, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-RaftState { id: 3, term: 2, vote: 3, state: Candidate, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-5440
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-RaftState { id: 3, term: 2, vote: 3, state: Candidate, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-5449
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-5457
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-5458
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-5467
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 0, log_committed: 2, log_applied: 1 }
-5470
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 0, log_committed: 2, log_applied: 2 }
-5475
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 0, log_committed: 2, log_applied: 1 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 0, log_committed: 1, log_applied: 1 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 0, log_committed: 2, log_applied: 2 }
-5476
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 0, log_committed: 2, log_applied: 1 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 0, log_committed: 2, log_applied: 1 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 0, log_committed: 2, log_applied: 2 }
-5478
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 0, log_committed: 2, log_applied: 2 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 0, log_committed: 2, log_applied: 1 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 0, log_committed: 2, log_applied: 2 }
-5479
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 0, log_committed: 2, log_applied: 2 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 0, log_committed: 2, log_applied: 2 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 0, log_committed: 2, log_applied: 2 }
-5554
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 0, log_committed: 2, log_applied: 2 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 0, log_committed: 2, log_applied: 2 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 10, log_committed: 2, log_applied: 2 }
-5562
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 10, log_committed: 2, log_applied: 2 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 0, log_committed: 2, log_applied: 2 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 10, log_committed: 2, log_applied: 2 }
-5563
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 10, log_committed: 2, log_applied: 2 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 10, log_committed: 2, log_applied: 2 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 10, log_committed: 2, log_applied: 2 }
-5569
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 10, log_committed: 2, log_applied: 2 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 10, log_committed: 2, log_applied: 2 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 10, log_committed: 12, log_applied: 2 }
-5572
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 10, log_committed: 2, log_applied: 2 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 10, log_committed: 2, log_applied: 2 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 10, log_committed: 12, log_applied: 12 }
-5577
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 10, log_committed: 12, log_applied: 2 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 10, log_committed: 2, log_applied: 2 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 10, log_committed: 12, log_applied: 12 }
-5578
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 10, log_committed: 12, log_applied: 2 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 10, log_committed: 12, log_applied: 2 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 10, log_committed: 12, log_applied: 12 }
-5581
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 10, log_committed: 12, log_applied: 12 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 10, log_committed: 12, log_applied: 2 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 10, log_committed: 12, log_applied: 12 }
-5582
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 10, log_committed: 12, log_applied: 12 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 10, log_committed: 12, log_applied: 12 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 10, log_committed: 12, log_applied: 12 }
-5589
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 10, log_committed: 12, log_applied: 12 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 10, log_committed: 12, log_applied: 12 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 20, log_committed: 12, log_applied: 12 }
-5597
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 20, log_committed: 12, log_applied: 12 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 10, log_committed: 12, log_applied: 12 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 20, log_committed: 12, log_applied: 12 }
-5598
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 20, log_committed: 12, log_applied: 12 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 20, log_committed: 12, log_applied: 12 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 20, log_committed: 12, log_applied: 12 }
-5604
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 20, log_committed: 12, log_applied: 12 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 20, log_committed: 12, log_applied: 12 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 20, log_committed: 22, log_applied: 12 }
-5607
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 20, log_committed: 12, log_applied: 12 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 20, log_committed: 12, log_applied: 12 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 20, log_committed: 22, log_applied: 22 }
-5612
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 20, log_committed: 22, log_applied: 12 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 20, log_committed: 12, log_applied: 12 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 20, log_committed: 22, log_applied: 22 }
-5613
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 20, log_committed: 22, log_applied: 12 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 20, log_committed: 22, log_applied: 12 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 20, log_committed: 22, log_applied: 22 }
-5616
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 20, log_committed: 22, log_applied: 22 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 20, log_committed: 22, log_applied: 12 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 20, log_committed: 22, log_applied: 22 }
-5617
-RaftState { id: 1, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 20, log_committed: 22, log_applied: 22 }
-RaftState { id: 2, term: 2, vote: 3, state: Follower, leader_id: 3, log_entries_len: 20, log_committed: 22, log_applied: 22 }
-RaftState { id: 3, term: 2, vote: 3, state: Leader, leader_id: 3, log_entries_len: 20, log_committed: 22, log_applied: 22 }
+RaftState { id: 2, term: 2, vote: 2, state: Candidate, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+RaftState { id: 3, term: 1, vote: 0, state: Follower, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+5138
+RaftState { id: 1, term: 1, vote: 0, state: Follower, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+RaftState { id: 2, term: 2, vote: 2, state: Candidate, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+5139
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+RaftState { id: 2, term: 2, vote: 2, state: Candidate, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+5148
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+5156
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 0, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+5157
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+5166
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 0, log_committed: 2, log_applied: 1 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+5169
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 0, log_committed: 2, log_applied: 2 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+5174
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 0, log_committed: 1, log_applied: 1 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 0, log_committed: 2, log_applied: 2 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 0, log_committed: 2, log_applied: 1 }
+5175
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 0, log_committed: 2, log_applied: 1 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 0, log_committed: 2, log_applied: 2 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 0, log_committed: 2, log_applied: 1 }
+5177
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 0, log_committed: 2, log_applied: 1 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 0, log_committed: 2, log_applied: 2 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 0, log_committed: 2, log_applied: 2 }
+5178
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 0, log_committed: 2, log_applied: 2 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 0, log_committed: 2, log_applied: 2 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 0, log_committed: 2, log_applied: 2 }
+5253
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 0, log_committed: 2, log_applied: 2 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 10, log_committed: 2, log_applied: 2 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 0, log_committed: 2, log_applied: 2 }
+5261
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 0, log_committed: 2, log_applied: 2 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 10, log_committed: 2, log_applied: 2 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 10, log_committed: 2, log_applied: 2 }
+5262
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 10, log_committed: 2, log_applied: 2 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 10, log_committed: 2, log_applied: 2 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 10, log_committed: 2, log_applied: 2 }
+5268
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 10, log_committed: 2, log_applied: 2 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 10, log_committed: 12, log_applied: 2 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 10, log_committed: 2, log_applied: 2 }
+5271
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 10, log_committed: 2, log_applied: 2 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 10, log_committed: 12, log_applied: 12 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 10, log_committed: 2, log_applied: 2 }
+5276
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 10, log_committed: 2, log_applied: 2 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 10, log_committed: 12, log_applied: 12 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 10, log_committed: 12, log_applied: 2 }
+5277
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 10, log_committed: 12, log_applied: 2 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 10, log_committed: 12, log_applied: 12 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 10, log_committed: 12, log_applied: 2 }
+5280
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 10, log_committed: 12, log_applied: 2 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 10, log_committed: 12, log_applied: 12 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 10, log_committed: 12, log_applied: 12 }
+5281
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 10, log_committed: 12, log_applied: 12 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 10, log_committed: 12, log_applied: 12 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 10, log_committed: 12, log_applied: 12 }
+5288
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 10, log_committed: 12, log_applied: 12 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 20, log_committed: 12, log_applied: 12 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 10, log_committed: 12, log_applied: 12 }
+5296
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 10, log_committed: 12, log_applied: 12 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 20, log_committed: 12, log_applied: 12 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 20, log_committed: 12, log_applied: 12 }
+5297
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 20, log_committed: 12, log_applied: 12 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 20, log_committed: 12, log_applied: 12 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 20, log_committed: 12, log_applied: 12 }
+5303
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 20, log_committed: 12, log_applied: 12 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 20, log_committed: 22, log_applied: 12 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 20, log_committed: 12, log_applied: 12 }
+5306
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 20, log_committed: 12, log_applied: 12 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 20, log_committed: 22, log_applied: 22 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 20, log_committed: 12, log_applied: 12 }
+5311
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 20, log_committed: 12, log_applied: 12 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 20, log_committed: 22, log_applied: 22 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 20, log_committed: 22, log_applied: 12 }
+5312
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 20, log_committed: 22, log_applied: 12 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 20, log_committed: 22, log_applied: 22 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 20, log_committed: 22, log_applied: 12 }
+5315
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 20, log_committed: 22, log_applied: 12 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 20, log_committed: 22, log_applied: 22 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 20, log_committed: 22, log_applied: 22 }
+5316
+RaftState { id: 1, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 20, log_committed: 22, log_applied: 22 }
+RaftState { id: 2, term: 2, vote: 2, state: Leader, leader_id: 2, log_entries_len: 20, log_committed: 22, log_applied: 22 }
+RaftState { id: 3, term: 2, vote: 2, state: Follower, leader_id: 2, log_entries_len: 20, log_committed: 22, log_applied: 22 }

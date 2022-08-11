@@ -110,12 +110,14 @@ pub enum AtomicBroadcastMsg {
     ProposalResp(ProposalResp),
     FirstLeader(u64),
     PendingReconfiguration(Vec<u8>),
+    PActorInitAck(u32)
 }
 
 const PROPOSAL_ID: u8 = 1;
 const PROPOSALRESP_ID: u8 = 2;
 const FIRSTLEADER_ID: u8 = 3;
 const PENDINGRECONFIG_ID: u8 = 4;
+const INITACK_ID: u8 = 5;
 
 impl Serialisable for AtomicBroadcastMsg {
     fn ser_id(&self) -> u64 {
@@ -134,6 +136,7 @@ impl Serialisable for AtomicBroadcastMsg {
             AtomicBroadcastMsg::ProposalResp(_) => 13 + DATA_SIZE_HINT,
             AtomicBroadcastMsg::PendingReconfiguration(_) => 5 + DATA_SIZE_HINT,
             AtomicBroadcastMsg::FirstLeader(_) => 9,
+            AtomicBroadcastMsg::PActorInitAck(_) => 9,
         };
         Some(msg_size)
     }
@@ -183,6 +186,10 @@ impl Serialisable for AtomicBroadcastMsg {
                 buf.put_u32(d.len() as u32);
                 buf.put_slice(d);
             }
+            AtomicBroadcastMsg::PActorInitAck(id) => {
+                buf.put_u8(INITACK_ID);
+                buf.put_u32(*id);
+            },
         }
         Ok(())
     }
@@ -244,6 +251,10 @@ impl Deserialiser<AtomicBroadcastMsg> for AtomicBroadcastDeser {
                 let mut data = vec![0; data_len];
                 buf.copy_to_slice(&mut data);
                 Ok(AtomicBroadcastMsg::PendingReconfiguration(data))
+            }
+            INITACK_ID => {
+                let id = buf.get_u32();
+                Ok(AtomicBroadcastMsg::PActorInitAck(id))
             }
             _ => Err(SerError::InvalidType(
                 "Found unkown id but expected RaftMsg, Proposal or ProposalResp".into(),

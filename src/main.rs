@@ -7,7 +7,7 @@ mod atomic_broadcast;
 extern crate raft as tikv_raft;
 use hashbrown::HashMap;
 use kompact::prelude::{KompactSystem, ActorPath, Recipient, KompactConfig, BufferConfig, Ask, promise, FutureCollection, NetworkConfig, DeadletterBox, Serialisable, SimulationScenario, SimulatedScheduling, GetState, Component, SimulationError, Invariant, BufMut};
-
+use rand::{rngs::StdRng, Rng, SeedableRng};
 use atomic_broadcast::{
     raft::{
         RaftCompMsg, RaftComp, ReconfigurationPolicy as RaftReconfigurationPolicy
@@ -65,6 +65,15 @@ pub struct RaftState{
     log_applied: u64
 }
 
+#[derive(Clone, Copy)]
+pub struct SimulationConfig {
+    num_nodes: u64,
+    num_proposals: u64,
+    concurrent_proposals: u64,
+    last_node_id: u64,
+    iteration_id: u64,
+}
+
 impl Display for RaftState{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
@@ -100,8 +109,6 @@ impl GetState<RaftState> for Component<RaftComp<Storage>> {
     }
 }
 
-
-
 fn print_all_raft_states(components: Vec<Component<RaftComp<MemStorage>>>){
     for component in components {
         println!("{:?}", component.get_state());
@@ -110,9 +117,16 @@ fn print_all_raft_states(components: Vec<Component<RaftComp<MemStorage>>>){
 
 fn todo_raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
     //Simulation config 5
-    let num_nodes = 3;
+    let simulation_config = SimulationConfig {
+        num_nodes: 3,
+        num_proposals: 10,
+        concurrent_proposals: 10,
+        last_node_id: 3,
+        iteration_id: 1,
+    };
     //Create nodes function invocation 1
-    let (systems, actor_paths, actor_refs) = create_nodes(simulation_scenario, num_nodes);
+    let (systems, actor_paths, actor_refs, simulation_scenario) = create_nodes(simulation_scenario, simulation_config);
+    let (client_comp, client_path, simulation_scenario) = create_client(simulation_scenario, actor_paths, simulation_config);
     //Create state monitors/inspections invariants 3
     //Register state monitors (implicitly checked for every step) 3
     //Simulation Sequence 1
@@ -120,23 +134,27 @@ fn todo_raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>)
     todo!()
 }
 
-fn create_nodes(mut simulation_scenario: SimulationScenario<RaftState>, num_nodes: u64) -> (Vec<KompactSystem>, Vec<ActorPath>, Vec<Recipient<GetSequence>>) {
+fn create_nodes(
+    mut simulation_scenario: SimulationScenario<RaftState>, 
+    sim_conf: SimulationConfig
+) -> (Vec<KompactSystem>, Vec<ActorPath>, Vec<Recipient<GetSequence>>, SimulationScenario<RaftState>) {
     //CREATE NODES TDOD: extract to separate method
-    let mut systems = Vec::with_capacity(num_nodes as usize);
-    let mut actor_paths = Vec::with_capacity(num_nodes as usize);
-    let mut actor_refs = Vec::with_capacity(num_nodes as usize);
+    let mut systems = Vec::with_capacity(sim_conf.num_nodes as usize);
+    let mut actor_paths = Vec::with_capacity(sim_conf.num_nodes as usize);
+    let mut actor_refs = Vec::with_capacity(sim_conf.num_nodes as usize);
     //let mut comp_defs = Vec::with_capacity(num_nodes as usize);
 
     let mut conf = KompactConfig::default();
     conf.load_config_file(CONFIG_PATH);
-    for i in 1..= num_nodes {
+    for i in 1..= sim_conf.num_nodes {
         let system = simulation_scenario.spawn_system(conf.clone());
-        let voters = get_experiment_configs(num_nodes).0;
+        let voters = get_experiment_configs(sim_conf.num_nodes).0;
         let (raft_comp, unique_reg_f) = simulation_scenario.create_and_register(&system, || {
             RaftComp::<Storage>::with(
                 i,
                 voters,
                 RaftReconfigurationPolicy::ReplaceFollower,
+                1
             )
         }, REGISTER_TIMEOUT);
 
@@ -151,10 +169,65 @@ fn create_nodes(mut simulation_scenario: SimulationScenario<RaftState>, num_node
         actor_paths.push(actor_path);
         actor_refs.push(actor_ref);
     }
-    (systems, actor_paths, actor_refs)
+    (systems, actor_paths, actor_refs, simulation_scenario)
+}
+
+fn create_client (
+    mut simulation_scenario: SimulationScenario<RaftState>, 
+    actor_paths: Vec<ActorPath>, 
+    sim_conf: SimulationConfig
+) -> (Arc<Component<Client>>, ActorPath, SimulationScenario<RaftState>) {
+    let mut conf = KompactConfig::default();
+    conf.load_config_file(CONFIG_PATH);
+    let system = simulation_scenario.spawn_system(conf); 
+
+    let mut nodes_id: HashMap<u64, ActorPath> = HashMap::new();
+
+    for (id, ap) in actor_paths.iter().enumerate() {
+        nodes_id.insert(id as u64 + 1, ap.clone());
+    }
+
+    //CREATE CLIENT LATCHES
+    let finished_latch = Arc::new(CountdownEvent::new(1));
+    let leader_election_latch = Arc::new(CountdownEvent::new(1));
+    let prepare_latch = Arc::new(CountdownEvent::new(1));
+
+    // CREATE CLIENT
+    let initial_config: Vec<_> = (1..=sim_conf.num_nodes).map(|x| x as u64).collect();
+    let (client_comp, unique_reg_f) = simulation_scenario.create_and_register(&system, || {
+        Client::with(
+            initial_config,
+            sim_conf.num_proposals,
+            sim_conf.concurrent_proposals,
+            nodes_id,
+            None,
+            Duration::from_millis(20000),
+            leader_election_latch.clone(),
+            finished_latch.clone(),
+            prepare_latch.clone(),
+            actor_paths
+        )
+    }, REGISTER_TIMEOUT);
+
+    let client_comp_f = simulation_scenario.start_notify(&system, &client_comp, REGISTER_TIMEOUT);
+    let client_path = simulation_scenario
+        .register_by_alias(&system, &client_comp, format!("client{}", &sim_conf.iteration_id), REGISTER_TIMEOUT);
+    
+    (client_comp, client_path, simulation_scenario)
 }
 
 fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
+    let mut rng = StdRng::seed_from_u64(5);
+
+    println!("num {}", rng.gen::<u64>());
+    println!("num {}", rng.gen::<u64>());
+    println!("num {}", rng.gen::<u64>());
+    println!("num {}", rng.gen::<u64>());
+    println!("num {}", rng.gen::<u64>());
+    println!("num {}", rng.gen::<u64>());
+    println!("num {}", rng.gen::<u64>());
+    println!("num {}", rng.gen::<u64>());
+
     let num_nodes = 3;
     let num_proposals = 10;
     let concurrent_proposals = 10;
@@ -177,6 +250,7 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
                 i,
                 voters,
                 RaftReconfigurationPolicy::ReplaceFollower,
+                rng.gen::<u64>()
             )
         }, REGISTER_TIMEOUT);
 
@@ -206,6 +280,7 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
     //CREATE CLIENT LATCHES
     let finished_latch = Arc::new(CountdownEvent::new(1));
     let leader_election_latch = Arc::new(CountdownEvent::new(1));
+    let prepare_latch = Arc::new(CountdownEvent::new(1));
 
     // CREATE CLIENT
     let initial_config: Vec<_> = (1..=num_nodes).map(|x| x as u64).collect();
@@ -219,6 +294,8 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
             Duration::from_millis(20000),
             leader_election_latch.clone(),
             finished_latch.clone(),
+            prepare_latch.clone(),
+            actor_paths
         )
     }, REGISTER_TIMEOUT);
 
@@ -235,8 +312,7 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
     */
 
     //PARTITIONING ACTOR
-    let prepare_latch = Arc::new(CountdownEvent::new(1));
-    let (partitioning_actor, _) = simulation_scenario.create_and_register(&system, || {
+    /*let (partitioning_actor, _) = simulation_scenario.create_and_register(&system, || {
         PartitioningActor::with(prepare_latch.clone(), None, iteration_id, actor_paths, None)
     }, Duration::from_millis(1000));
 
@@ -249,7 +325,14 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
 
     partitioning_actor
         .actor_ref()
-        .tell(IterationControlMsg::Prepare(Some(ser_client)));
+        .tell(IterationControlMsg::Prepare(Some(ser_client)));*/
+    
+    let mut ser_client = Vec::<u8>::new();
+    client_path
+        .serialise(&mut ser_client)
+        .expect("Failed to serialise ClientComp actorpath");
+
+    client_comp.actor_ref().tell(LocalClientMessage::Prepare(Some(ser_client)));
 
     while prepare_latch.count() > 0 {
         simulation_scenario.simulate_step();
@@ -257,7 +340,9 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
     
     let post_prepare_count = simulation_scenario.get_simulation_step_count();
 
-    partitioning_actor.actor_ref().tell(IterationControlMsg::Run);
+    println!("POST PREPARE COUNT: {}", post_prepare_count);
+
+    client_comp.actor_ref().tell(LocalClientMessage::Start);
 
     while leader_election_latch.count() > 0 {
         simulation_scenario.simulate_step();
@@ -375,16 +460,17 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
     
     println!("kill pactor");
 
-    let kill_pactor_f = system.kill_notify(partitioning_actor);
+    /*let kill_pactor_f = system.kill_notify(partitioning_actor);
     kill_pactor_f
         .wait_timeout(REGISTER_TIMEOUT)
-        .expect("Partitioning Actor never died!");
+        .expect("Partitioning Actor never died!");*/
 
     println!("system shutdown");
 
     println!("Post prepare: {}", post_prepare_count);
     println!("Post leader: {}", post_leader_election_count);
     println!("Post finished: {}", post_finished_latch);
+    println!("leader finished diff {}", post_finished_latch - post_leader_election_count);
 
 
     system

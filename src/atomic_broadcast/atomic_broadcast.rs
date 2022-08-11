@@ -338,11 +338,13 @@ impl AtomicBroadcastMaster {
                 initial_config,
                 self.num_proposals.unwrap(),
                 self.concurrent_proposals.unwrap(),
-                nodes_id,
+                nodes_id.clone(),
                 reconfig,
                 client_timeout,
                 leader_election_latch,
-                finished_latch,
+                finished_latch.clone(),
+                finished_latch.clone(), //quick fix,
+                nodes_id.values().cloned().collect()
             )
         });
         unique_reg_f.wait_expect(REGISTER_TIMEOUT, "Client failed to register!");
@@ -1079,6 +1081,7 @@ fn create_nodes(
                         i,
                         voters,
                         reconfig_policy.unwrap_or(RaftReconfigurationPolicy::ReplaceFollower),
+                        1
                     )
                 });
                 unique_reg_f.wait_expect(REGISTER_TIMEOUT, "RaftComp failed to register!");

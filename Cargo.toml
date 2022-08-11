@@ -18,7 +18,8 @@ num_cpus 				= "1"
 parse_duration 			= "2"
 rand 					= {version = "0.7", features = ["small_rng"]}
 chrono                  = "0.4"
-raft                    = {git = "https://github.com/tikv/raft-rs", rev = "74f6aa43812a1c7809366079f84a6de28dfcf18e"} 
+raft                    = {git = "https://github.com/johanmallobakken/raft-rs"} 
+#raft                    = {git = "https://github.com/tikv/raft-rs", rev = "74f6aa43812a1c7809366079f84a6de28dfcf18e"} 
 uuid                    = { version = "0.8", features = ["v4"] }
 memmap                  = "0.7.0"
 hashbrown               = "0.8.0"

@@ -1,0 +1,1 @@
+executing "/Users/johanmallobakken/.cargo/registry/src/github.com-1ecc6299db9ec823/protobuf-build-0.8.0/bin/protoc-osx-x86_64" "-Iinclude" "-Iproto" "--include_imports" "--include_source_info" "-o" "/Users/johanmallobakken/Documents/Master Thesis/raft_experiment_new/target/debug/build/raft-proto-c3ac1a53d76b7eb4/out/protos/mod.desc" "proto/eraftpb.proto"

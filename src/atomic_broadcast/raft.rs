@@ -10,7 +10,8 @@ use super::{
 use hashbrown::{HashMap, HashSet};
 use kompact::prelude::*;
 use protobuf::Message as PbMessage;
-use rand::Rng;
+use rand::{rngs::StdRng, Rng, SeedableRng};
+
 use std::{borrow::Borrow, clone::Clone, marker::Send, ops::DerefMut, sync::Arc, time::Duration, os::unix::prelude::CommandExt, cell::RefCell, rc::Rc};
 use tikv_raft::{
     prelude::{Message as TikvRaftMsg, *},
@@ -21,7 +22,7 @@ const COMMUNICATOR: &str = "communicator";
 const DELAY: Duration = Duration::from_millis(0);
 
 
-fn create_rawraft_config(pid: u64) -> Config {
+fn create_rawraft_config(pid: u64, seed: u64) -> Config {
     let max_inflight_msgs: usize = 100000;//config["experiment"]["max_inflight"]
         //.as_i64()
         //.expect("Failed to load max_inflight") as usize;
@@ -56,6 +57,7 @@ fn create_rawraft_config(pid: u64) -> Config {
         max_size_per_msg,
         pre_vote,
         check_quorum,
+        seed,
         ..Default::default()
     };
     assert!(c.validate().is_ok(), "Invalid RawRaft config");
@@ -150,19 +152,21 @@ where
     reconfig_policy: ReconfigurationPolicy,
     pub raft_replica: RaftReplica<S>,
     timers: Option<(ScheduledTimer, ScheduledTimer)>,
+    seed: u64,
 }
 
 impl<S> RaftComp<S>
 where
     S: RaftStorage + Send + Clone + 'static,
 {
-    pub fn with(pid: u64, initial_config: Vec<u64>, reconfig_policy: ReconfigurationPolicy) -> Self {
+    pub fn with(pid: u64, initial_config: Vec<u64>, reconfig_policy: ReconfigurationPolicy, seed: u64) -> Self {
+        //TODO: fix not to have same seed on rng in raft and rng here, but idk
         //FIXED:: raft replica struct here
         //TODO: check for inconsistency in pid, update pid and peers len in create components???
         let dir = &format!("./diskstorage_node{}", pid);
         let conf_state: (Vec<u64>, Vec<u64>) = (initial_config.clone(), vec![]);
         let store = S::new_with_conf_state(Some(dir), conf_state);
-        let raw_raft_config = create_rawraft_config(pid);
+        let raw_raft_config = create_rawraft_config(pid, seed);
         let raw_raft =
             RawNode::new(&raw_raft_config, store).expect("Failed to create tikv Raft");
 
@@ -177,6 +181,8 @@ where
             max_inflight
         );
 
+        println!("pid {}, seed {}", pid, seed);
+
         RaftComp {
             ctx: ComponentContext::uninitialised(),
             pid,
@@ -189,7 +195,8 @@ where
             current_leader: 0,
             reconfig_policy,
             raft_replica,
-            timers: None
+            timers: None,
+            seed
         }
     }
 
@@ -265,7 +272,7 @@ where
         .take()
         .expect("No partitioning actor found!")
         .tell_serialised(
-            PartitioningActorMsg::InitAck(self.iteration_id),
+            AtomicBroadcastMsg::PActorInitAck(self.iteration_id),
             self,
         )
         .expect("Should serialise InitAck");
@@ -325,6 +332,12 @@ where
 
         // Get the `Ready` with `RawNode::ready` interface.
         let mut ready = self.raft_replica.raw_raft.ready();
+
+        // If soft state change we want to reset the randomized election timeout
+
+        //if ready.ss().is_some() {
+        //    self.raft_replica.raw_raft.raft.set_randomized_election_timeout(5);
+        //}
 
         //Step 1: Check snapshot
 
@@ -434,7 +447,7 @@ where
                                 self.raft_replica.state = State::Election; // reset leader so it can notify client when new leader emerges
                                 if self.raft_replica.reconfig_state != ReconfigurationState::Removed {
                                     // campaign later if we are not removed
-                                    let mut rng = rand::thread_rng();
+                                    let mut rng = StdRng::seed_from_u64(self.seed);
                                     let config = self.ctx.config();
                                     let tick_period = config["raft"]["tick_period"]
                                         .as_i64()
@@ -455,6 +468,7 @@ where
                                     let rnd = rng
                                         .gen_range(intial_timeout_ticks, 2 * intial_timeout_ticks);
                                     let timeout = rnd * tick_period;
+                                    println!("pid {}, timmmout {}", self.pid, timeout);
                                     self.schedule_once(
                                         Duration::from_millis(timeout as u64),
                                         move |c, _| c.try_campaign_leader(),
@@ -658,6 +672,7 @@ where
                 }
             }
             None => {
+                println!("PROPPPP in raft. PID: {}", self.pid);
                 // i.e normal operation
                 let data = proposal.data;
                 self.raft_replica.raw_raft.propose(vec![], data).unwrap_or_else(|_| {
@@ -983,6 +998,7 @@ where
                             .try_deserialise_unchecked::<AtomicBroadcastMsg, AtomicBroadcastDeser>()
                             .expect("Should be AtomicBroadcastMsg!")
                         {
+                            println!("RAFT RECEIVE PROPOSEEEEEEE");
                             self.raft_replica_receive_local_raftreplicamsg_propose(p);
                             /*self.raft_replica
                                 .as_ref()
