@@ -518,6 +518,7 @@ impl Client {
         if self.responses.contains_key(&id)
             || self.state == ExperimentState::ReconfigurationElection
         {
+            println!("PROPOSAL DID NOT TIME OUT");
             return Handled::Ok;
         }
         // info!(self.ctx.log(), "Timed out proposal {}", id);

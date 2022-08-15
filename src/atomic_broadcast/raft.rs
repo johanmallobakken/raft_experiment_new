@@ -1,6 +1,6 @@
 extern crate raft as tikv_raft;
 
-use crate::atomic_broadcast::{partitioning_actor::{PartitioningActorSer, PartitioningActorMsg}, messages::raft::RawRaftSer};
+use crate::{atomic_broadcast::{partitioning_actor::{PartitioningActorSer, PartitioningActorMsg}, messages::raft::RawRaftSer}};
 
 use super::{
     messages::{StopMsg as NetStopMsg, StopMsgDeser, *, raft::RaftMsg},
@@ -153,6 +153,7 @@ where
     pub raft_replica: RaftReplica<S>,
     timers: Option<(ScheduledTimer, ScheduledTimer)>,
     seed: u64,
+    pub proposal_count: u64
 }
 
 impl<S> RaftComp<S>
@@ -196,7 +197,8 @@ where
             reconfig_policy,
             raft_replica,
             timers: None,
-            seed
+            seed,
+            proposal_count:0
         }
     }
 
@@ -672,7 +674,8 @@ where
                 }
             }
             None => {
-                println!("PROPPPP in raft. PID: {}", self.pid);
+                self.proposal_count += 1;
+                println!("PROPPPP in raft. PID: {} Count: {}", self.pid, self.proposal_count);
                 // i.e normal operation
                 let data = proposal.data;
                 self.raft_replica.raw_raft.propose(vec![], data).unwrap_or_else(|_| {

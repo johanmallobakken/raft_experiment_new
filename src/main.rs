@@ -30,6 +30,7 @@ use tikv_raft::{storage::MemStorage, StateRole, RaftLog, Storage as TikvStorage}
 use kompact::prelude::ActorRefFactory;
 type Storage = MemStorage;
 
+
 fn get_experiment_configs(last_node_id: u64) -> (Vec<u64>, Vec<u64>) {
     if last_node_id % 2 == 0 {
         let initial_config: Vec<_> = (1..last_node_id).collect();
@@ -62,7 +63,7 @@ pub struct RaftState{
     log_entries_len: usize,
     //log_unstable: Unstable,
     log_committed: u64,
-    log_applied: u64
+    log_applied: u64,
 }
 
 #[derive(Clone, Copy)]
@@ -104,7 +105,7 @@ impl GetState<RaftState> for Component<RaftComp<Storage>> {
             log_entries_len: entries.len(),
             //log_unstable: self.raft_replica.raw_raft.raft.raft_log.unstable.copy(),
             log_committed: def.raft_replica.raw_raft.raft.raft_log.committed,
-            log_applied: def.raft_replica.raw_raft.raft.raft_log.applied,
+            log_applied: def.raft_replica.raw_raft.raft.raft_log.applied 
         }
     }
 }
@@ -395,6 +396,8 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
 
     let post_finished_latch = simulation_scenario.get_simulation_step_count();
 
+    println!("FINISHED NOW, PROPOSALS AFTER THIS=????");
+
 
     //let mut sequence_responses: Vec<SequenceResp> = vec![];
 
@@ -424,6 +427,8 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
     let sequence_responses: Vec<_> = FutureCollection::collect_results::<Vec<_>>(futures);
     println!("POST SEQUENCE RESPONSES");
 
+
+    println!("prechecksssssssssss");
     let quorum_size = num_nodes as usize / 2 + 1;
     check_quorum(&sequence_responses, quorum_size, num_proposals);
     check_validity(&sequence_responses, num_proposals);
