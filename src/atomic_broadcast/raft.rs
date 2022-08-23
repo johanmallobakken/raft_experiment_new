@@ -11,6 +11,7 @@ use hashbrown::{HashMap, HashSet};
 use kompact::prelude::*;
 use protobuf::Message as PbMessage;
 use rand::{rngs::StdRng, Rng, SeedableRng};
+use std::fmt::Debug;
 
 use std::{borrow::Borrow, clone::Clone, marker::Send, ops::DerefMut, sync::Arc, time::Duration, os::unix::prelude::CommandExt, cell::RefCell, rc::Rc};
 use tikv_raft::{
@@ -320,7 +321,7 @@ where
 
     fn on_ready(&mut self) -> Handled {
 
-        //println!("on_ready {}", self.pid);
+        //println!("on_ready for node: {}, state: {}", self.pid, self.raft_replica.raw_raft.raft.state);
 
         //Check if has ready, if not we just return 
         
@@ -445,6 +446,7 @@ where
                             }
                             let leader = self.raft_replica.raw_raft.raft.leader_id;
                             if leader == 0 {
+                                println!("LEADER IS ZEROOOOOOO");
                                 // leader was removed
                                 self.raft_replica.state = State::Election; // reset leader so it can notify client when new leader emerges
                                 if self.raft_replica.reconfig_state != ReconfigurationState::Removed {

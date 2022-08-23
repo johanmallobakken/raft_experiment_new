@@ -86,16 +86,21 @@ impl GetState<RaftState> for Component<RaftComp<Storage>> {
 
         let def = &self.mutable_core.lock().unwrap().definition;
 
-        let log = def.raft_replica.raw_raft.raft.raft_log.store.clone();
+        let log = def.raft_replica.raw_raft.raft.raft_log.get_store();
 
         let mut entries:Vec<Entry> = vec![];
 
         if log.last_index().unwrap() > 1 {
             //println!("{}", log.last_index().unwrap());
-            entries = log.entries(log.first_index().unwrap(), log.last_index().unwrap(), 9999).unwrap();
+            entries = log.entries(log.first_index().unwrap(), log.last_index().unwrap() + 1 , None).unwrap();
         }
 
-        RaftState{
+        /*if log.entries().is_ok() {
+            //println!("{}", log.last_index().unwrap());
+            entries = log.entries(log.first_index().unwrap(), log.last_index().unwrap(), 9999).unwrap();
+        }*/
+
+        RaftState {
             id: def.raft_replica.raw_raft.raft.id,
             term: def.raft_replica.raw_raft.raft.term,
             vote: def.raft_replica.raw_raft.raft.vote,
@@ -103,6 +108,7 @@ impl GetState<RaftState> for Component<RaftComp<Storage>> {
             leader_id: def.raft_replica.raw_raft.raft.leader_id,
             //RAFT LOG
             log_entries_len: entries.len(),
+            //log_entries: entries,
             //log_unstable: self.raft_replica.raw_raft.raft.raft_log.unstable.copy(),
             log_committed: def.raft_replica.raw_raft.raft.raft_log.committed,
             log_applied: def.raft_replica.raw_raft.raft.raft_log.applied 
@@ -118,10 +124,12 @@ fn print_all_raft_states(components: Vec<Component<RaftComp<MemStorage>>>){
 
 fn todo_raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
     //Simulation config 5
+
+    //NOT HERE
     let simulation_config = SimulationConfig {
         num_nodes: 3,
-        num_proposals: 10,
-        concurrent_proposals: 10,
+        num_proposals: 15,
+        concurrent_proposals: 15,
         last_node_id: 3,
         iteration_id: 1,
     };
@@ -217,21 +225,50 @@ fn create_client (
     (client_comp, client_path, simulation_scenario)
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+fn deadlock_scenario_ready(simulation_scenario: &SimulationScenario<RaftState>) -> bool{
+    let states = simulation_scenario.get_all_actor_states();
+    states[0].log_committed >= states[1].log_committed && states[1].log_committed > states[2].log_committed
+}
+
+
+
+
+
+
+
+
+
 fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
     let mut rng = StdRng::seed_from_u64(5);
 
-    println!("num {}", rng.gen::<u64>());
-    println!("num {}", rng.gen::<u64>());
-    println!("num {}", rng.gen::<u64>());
-    println!("num {}", rng.gen::<u64>());
-    println!("num {}", rng.gen::<u64>());
-    println!("num {}", rng.gen::<u64>());
-    println!("num {}", rng.gen::<u64>());
-    println!("num {}", rng.gen::<u64>());
-
     let num_nodes = 3;
-    let num_proposals = 10;
-    let concurrent_proposals = 10;
+    let num_proposals = 1000;
+    let concurrent_proposals = 1000;
     let last_node_id = num_nodes;
     let iteration_id = 1;
 
@@ -304,29 +341,7 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
     let client_path = simulation_scenario
         .register_by_alias(&system, &client_comp, format!("client{}", &iteration_id), REGISTER_TIMEOUT);
 
-    //TODO: remove need for paritioning actor and trigger this codeblock through the client instead, maybe(?) make it part of the simulation sequence
-    /*
-        for node in &self.nodes {
-            node.tell_serialised(PartitioningActorMsg::Run, self)
-                .expect("Should serialise");
-        }
-    */
-
     //PARTITIONING ACTOR
-    /*let (partitioning_actor, _) = simulation_scenario.create_and_register(&system, || {
-        PartitioningActor::with(prepare_latch.clone(), None, iteration_id, actor_paths, None)
-    }, Duration::from_millis(1000));
-
-    let partitioning_actor_f = simulation_scenario.start_notify(&system, &partitioning_actor, Duration::from_millis(1000));
-
-    let mut ser_client = Vec::<u8>::new();
-    client_path
-        .serialise(&mut ser_client)
-        .expect("Failed to serialise ClientComp actorpath");
-
-    partitioning_actor
-        .actor_ref()
-        .tell(IterationControlMsg::Prepare(Some(ser_client)));*/
     
     let mut ser_client = Vec::<u8>::new();
     client_path
@@ -341,54 +356,25 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
     
     let post_prepare_count = simulation_scenario.get_simulation_step_count();
 
-    println!("POST PREPARE COUNT: {}", post_prepare_count);
-
     client_comp.actor_ref().tell(LocalClientMessage::Start);
 
     while leader_election_latch.count() > 0 {
         simulation_scenario.simulate_step();
     }
 
-    //client_comp.actor_ref().tell(LocalClientMessage::Run);
-
     let post_leader_election_count = simulation_scenario.get_simulation_step_count();
-    println!("POST LEADER ELECTION: {}", post_leader_election_count);
 
-    client_comp.actor_ref().tell(LocalClientMessage::Propose(1));
-    client_comp.actor_ref().tell(LocalClientMessage::Propose(2));
-    client_comp.actor_ref().tell(LocalClientMessage::Propose(3));
-    client_comp.actor_ref().tell(LocalClientMessage::Propose(4));
-    client_comp.actor_ref().tell(LocalClientMessage::Propose(5));
-    client_comp.actor_ref().tell(LocalClientMessage::Propose(6));
-    client_comp.actor_ref().tell(LocalClientMessage::Propose(7));
-    client_comp.actor_ref().tell(LocalClientMessage::Propose(8));
-    client_comp.actor_ref().tell(LocalClientMessage::Propose(9));
-    client_comp.actor_ref().tell(LocalClientMessage::Propose(10));
+    for i in 1..(num_proposals+1) {
+        client_comp.actor_ref().tell(LocalClientMessage::Propose(i));
+    }
 
-    println!("POST PROPOSALS SENT");
-
-
-    /*println!("CLOGGING SYSTEMMMMMMMMMMMM NOOOOOOWWW");
-    println!("CLOGGING SYSTEMMMMMMMMMMMM NOOOOOOWWW");
-    println!("CLOGGING SYSTEMMMMMMMMMMMM NOOOOOOWWW");
-    println!("CLOGGING SYSTEMMMMMMMMMMMM NOOOOOOWWW");
-    println!("CLOGGING SYSTEMMMMMMMMMMMM NOOOOOOWWW");*/
-    //simulation_scenario.clog_system(systems[0].clone());
-
-
-    /* 
-
-    let invariant = RaftInvariantChecker{};
-    let invariant_idx = simulation_scenario.monitor_invariant(Arc::new(invariant));
-    while simulation_scenario.check_invariant_on_index(invariant_idx).is_err() {
+    while !deadlock_scenario_ready(&simulation_scenario) {
+        println!("!!!waiting for deadlock scenariooooooo!!!");
         simulation_scenario.simulate_step();
     }
 
-    //simulation_scenario.print_simulation_step_count();
-    simulation_scenario.clog_system(systems[0].clone());
-    */
-
-
+    simulation_scenario.break_link(&systems[0], &systems[2]);
+    //simulation_scenario.clog_system(&systems[0]);
     
     while finished_latch.count() > 0 {
         simulation_scenario.simulate_step();
@@ -396,39 +382,20 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
 
     let post_finished_latch = simulation_scenario.get_simulation_step_count();
 
-    println!("FINISHED NOW, PROPOSALS AFTER THIS=????");
-
-
-    //let mut sequence_responses: Vec<SequenceResp> = vec![];
-
-    //simulation_scenario.set_scheduling_choice(SimulatedScheduling::Now);
-
-
     let mut futures = vec![];
     for node in actor_refs {
         let (kprom, kfuture) = promise::<SequenceResp>();
         let ask = Ask::new(kprom, ());
-        println!("TELLING NODE GET SEQ");
         node.tell(GetSequence(ask));
-
-        //println!("pre wait future");
-        //let seq = simulation_scenario.wait_future(kfuture);
         futures.push(kfuture);
-        //println!("post wait future");
-        //sequence_responses.push(seq);
     }
 
-
-    for i in 0..100 {
+    for i in 0..50 {
         simulation_scenario.simulate_step()
     }
 
-    println!("PRE SEQUENCE RESPONSES");
     let sequence_responses: Vec<_> = FutureCollection::collect_results::<Vec<_>>(futures);
-    println!("POST SEQUENCE RESPONSES");
 
-
-    println!("prechecksssssssssss");
     let quorum_size = num_nodes as usize / 2 + 1;
     check_quorum(&sequence_responses, quorum_size, num_proposals);
     check_validity(&sequence_responses, num_proposals);
@@ -441,42 +408,18 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
         iteration_id, 0.0
     );
 
-    println!("wait meta results");
-
     simulation_scenario.set_scheduling_choice(SimulatedScheduling::Now);
-
-    //let meta_results = client_comp.actor_ref().ask_with(|promise| LocalClientMessage::Stop(Ask::new(promise, ()))).wait();
-
-    /*for i in 0..100 {
-        simulation_scenario.simulate_step()
-    }
-
-    let meta_results = ask.wait();*/
-
-    //let mut num_timed_out = vec![];
-    //num_timed_out.push(meta_results.num_timed_out);
-
-    println!("kill client");
 
     let kill_client_f = system.kill_notify(client_comp);
     kill_client_f
         .wait_timeout(REGISTER_TIMEOUT)
         .expect("Client never died");
     
-    println!("kill pactor");
-
-    /*let kill_pactor_f = system.kill_notify(partitioning_actor);
-    kill_pactor_f
-        .wait_timeout(REGISTER_TIMEOUT)
-        .expect("Partitioning Actor never died!");*/
-
-    println!("system shutdown");
 
     println!("Post prepare: {}", post_prepare_count);
     println!("Post leader: {}", post_leader_election_count);
     println!("Post finished: {}", post_finished_latch);
-    println!("leader finished diff {}", post_finished_latch - post_leader_election_count);
-
+    println!("Leader finished diff: {}", post_finished_latch - post_leader_election_count);
 
     system
         .shutdown()
@@ -496,7 +439,7 @@ impl RaftInvariantChecker {
     }
 }
 
-impl Invariant<RaftState> for RaftInvariantChecker{
+impl Invariant<RaftState> for RaftInvariantChecker {
     fn check(&self, state: Vec<RaftState>) -> Result<(), SimulationError> {
         if RaftInvariantChecker::log_length_more_or_eq_500(state){
             Ok(())
@@ -505,7 +448,6 @@ impl Invariant<RaftState> for RaftInvariantChecker{
         }
     }
 }
-
 
 fn main() {
     let mut simulation_scenario: SimulationScenario<RaftState> = SimulationScenario::new();

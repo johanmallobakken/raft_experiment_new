@@ -369,14 +369,24 @@ impl Client {
         }
     }
 
-    fn propose_normal(&self, id: u64, node: &ActorPath) {
-        println!("!!!!!!!!!!!!!!!!!!!!!!!! PROPOSE NORMAL ID: {}", id);
+    fn propose_normal(&mut self, id: u64) {
+        let mut data: Vec<u8> = Vec::with_capacity(8);
+        data.put_u64(id);
+        let p = Proposal::normal(data);
+        println!("SENDING PROPOSAL TO LEADER, CURRENT LEADER: {}", self.current_leader);
+        let leader = self.nodes.get(&self.current_leader).unwrap().clone();
+        leader.tell_serialised(AtomicBroadcastMsg::Proposal(p), self).expect("Should serialise Proposal");
+        let timer = self.schedule_once(self.timeout, move |c, _| c.proposal_timeout(id));
+        let proposal_meta = ProposalMetaData::with(Some(SystemTime::now()), timer);
+        self.pending_proposals.insert(id, proposal_meta);
+
+        /*println!("!!!!!!!!!!!!!!!!!!!!!!!! PROPOSE NORMAL ID: {}", id);
         let mut data: Vec<u8> = Vec::with_capacity(8);
         data.put_u64(id);
         let p = Proposal::normal(data);
         //println!("propose to addr: {}", node.address());
         node.tell_serialised(AtomicBroadcastMsg::Proposal(p), self)
-            .expect("Should serialise Proposal");
+            .expect("Should serialise Proposal");*/
     }
 
     fn propose_reconfiguration(&self, node: &ActorPath) {
@@ -427,7 +437,7 @@ impl Client {
                     true => Some(SystemTime::now()),
                     _ => None,
                 };
-                self.propose_normal(id, &leader);
+                self.propose_normal(id);
                 let timer = self.schedule_once(self.timeout, move |c, _| c.proposal_timeout(id));
                 let proposal_meta = ProposalMetaData::with(current_time, timer);
                 self.pending_proposals.insert(id, proposal_meta);
@@ -450,7 +460,7 @@ impl Client {
                 info!(self.ctx.log(), "Retrying proposals to node {}. Count: {}, min: {:?}, max: {:?}, num_pending: {}", self.current_leader, count, min, max, num_pending);
             }
             for (id, start_time) in retry_proposals {
-                self.propose_normal(id, &leader);
+                self.propose_normal(id);
                 println!("RETRY PROPOSAL TIMEOUT");
                 let timer = self.schedule_once(self.timeout, move |c, _| c.proposal_timeout(id));
                 let meta = ProposalMetaData::with(start_time, timer);
@@ -521,8 +531,9 @@ impl Client {
             println!("PROPOSAL DID NOT TIME OUT");
             return Handled::Ok;
         }
-        // info!(self.ctx.log(), "Timed out proposal {}", id);
+        info!(self.ctx.log(), "Timed out proposal {}", id);
         if id == RECONFIG_ID {
+            println!("RECONFIG ID????????");
             if let Some(leader) = self.nodes.get(&self.current_leader) {
                 self.propose_reconfiguration(leader);
             }
@@ -533,12 +544,17 @@ impl Client {
             ));
             proposal_meta.set_timer(timer);
         } else {
-            println!("proposal timed out");
+            println!("PROPOSAL TIMEOUT ID: {}", id);
             self.num_timed_out += 1;
             let proposal_meta = self
                 .pending_proposals
                 .remove(&id)
                 .expect("Timed out on proposal not in pending proposals");
+            println!("RESENDING TIMED OUT PROPOSAL ID: {}", id);
+            self.propose_normal(id);
+
+            /* 
+    
             let latency = match proposal_meta.start_time {
                 Some(start_time) => Some(
                     start_time
@@ -547,8 +563,10 @@ impl Client {
                 ),
                 _ => None,
             };
-            self.handle_normal_response(id, latency);
-            self.send_concurrent_proposals();
+            */
+            //self.retry_proposals.push((id, proposal_meta.start_time));
+            //self.handle_normal_response(id, latency);
+            //self.send_concurrent_proposals();
             #[cfg(feature = "track_timeouts")]
             {
                 self.timeouts.push(id);
@@ -668,7 +686,7 @@ impl Actor for Client {
                     self.leader_changes.push(self.current_leader);
                     self.leader_changes_t.push(now);
                 }
-                self.send_concurrent_proposals();
+                //self.send_concurrent_proposals();
             }
             LocalClientMessage::Stop(a) => {
                 println!("Stopping client!");
@@ -680,16 +698,18 @@ impl Actor for Client {
                 self.stop_ask = Some(a);
             }
             LocalClientMessage::Propose(id) => {
-                let mut data: Vec<u8> = Vec::with_capacity(8);
+                self.propose_normal(id);
+                /*let mut data: Vec<u8> = Vec::with_capacity(8);
                 data.put_u64(id);
                 let p = Proposal::normal(data);
+                println!("CURRENT LEADER: {}", self.current_leader);
                 let leader = self.nodes.get(&self.current_leader).unwrap().clone();
                 println!("TELLING LEADER PROPOSE HEHEHE");
                 leader.tell_serialised(AtomicBroadcastMsg::Proposal(p), self).expect("Should serialise Proposal");
                 println!("sending propose prooposal timeout");
                 let timer = self.schedule_once(self.timeout, move |c, _| c.proposal_timeout(id));
                 let proposal_meta = ProposalMetaData::with(Some(SystemTime::now()), timer);
-                self.pending_proposals.insert(id, proposal_meta);
+                self.pending_proposals.insert(id, proposal_meta);*/
             }
         }
         Handled::Ok
@@ -702,9 +722,6 @@ impl Actor for Client {
             data,
             session: _,
         } = m;
-
-        println!("CLIENT RECIEVE NETWORK");
-
         match_deser! {data {
             msg(am): AtomicBroadcastMsg [using AtomicBroadcastDeser] => {
                 // info!(self.ctx.log(), "Handling {:?}", am);
@@ -788,7 +805,7 @@ impl Actor for Client {
                                     };
                                     self.cancel_timer(proposal_meta.timer);
                                     if self.current_config.contains(&pr.latest_leader) && self.current_leader != pr.latest_leader && self.state != ExperimentState::ReconfigurationElection {
-                                        // info!(self.ctx.log(), "Got leader in normal response: {}. old: {}", pr.latest_leader, self.current_leader);
+                                        info!(self.ctx.log(), "Got leader in normal response: {}. old: {}", pr.latest_leader, self.current_leader);
                                         self.current_leader = pr.latest_leader;
                                         self.leader_changes.push(pr.latest_leader);
                                         #[cfg(feature = "track_timestamps")] {
@@ -798,7 +815,7 @@ impl Actor for Client {
                                     self.handle_normal_response(id, latency);
                                     if self.state != ExperimentState::ReconfigurationElection {
                                         println!("send concurrent?");
-                                        self.send_concurrent_proposals();
+                                        //self.send_concurrent_proposals();
                                     }
                                 }
                                 #[cfg(feature = "track_timeouts")] {
@@ -830,7 +847,7 @@ impl Actor for Client {
                                             self.state = ExperimentState::ReconfigurationElection;
                                         } else {    // Raft: continue if there is a leader
                                             self.state = ExperimentState::Running;
-                                            self.send_concurrent_proposals();
+                                            //self.send_concurrent_proposals();
                                             if leader_changed {
                                                 self.leader_changes.push(pr.latest_leader);
                                                 #[cfg(feature = "track_timestamps")] {
@@ -854,7 +871,7 @@ impl Actor for Client {
                                     match self.first_proposal_after_reconfig {
                                         Some(first_id) => {
                                             self.hold_back_proposals(dropped_proposal, first_id);
-                                            self.send_concurrent_proposals();
+                                            //self.send_concurrent_proposals();
                                         }
                                         _ => unreachable!("Running in new configuration but never cached first proposal in new config!?"),
                                     }
