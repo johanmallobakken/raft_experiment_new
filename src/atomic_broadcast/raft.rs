@@ -24,16 +24,24 @@ const DELAY: Duration = Duration::from_millis(0);
 
 
 fn create_rawraft_config(pid: u64, seed: u64) -> Config {
-    let max_inflight_msgs: usize = 100000;//config["experiment"]["max_inflight"]
+    Config {
+        id: pid,
+        seed,
+        election_tick: 5,
+        heartbeat_tick: 1,
+        ..Default::default()
+    }
+
+    /*let max_inflight_msgs: usize = 100000;//config["experiment"]["max_inflight"]
         //.as_i64()
         //.expect("Failed to load max_inflight") as usize;
-    let election_timeout: usize = 5000; //config["experiment"]["election_timeout"]
+    let election_timeout: usize = 500; //config["experiment"]["election_timeout"]
         //.as_i64()
         //.expect("Failed to load election_timeout") as usize;
     let tick_period: usize = 100;//config["raft"]["tick_period"]
         //.as_i64()
         //.expect("Failed to load tick_period") as usize;
-    let leader_hb_period: usize = 1000;//config["raft"]["leader_hb_period"]
+    let leader_hb_period: usize = 100;//config["raft"]["leader_hb_period"]
         //.as_i64()
         //.expect("Failed to load leader_hb_period") as usize;
     let max_batch_size: u64 = 50000000;//config["raft"]["max_batch_size"]
@@ -62,7 +70,7 @@ fn create_rawraft_config(pid: u64, seed: u64) -> Config {
         ..Default::default()
     };
     assert!(c.validate().is_ok(), "Invalid RawRaft config");
-    c
+    c*/
 }
 
 #[derive(Debug)]
@@ -154,7 +162,9 @@ where
     pub raft_replica: RaftReplica<S>,
     timers: Option<(ScheduledTimer, ScheduledTimer)>,
     seed: u64,
-    pub proposal_count: u64
+    pub proposal_count: u64,
+    pub timer_on_ready_count: u64,
+    pub timer_tick_count: u64,
 }
 
 impl<S> RaftComp<S>
@@ -199,7 +209,9 @@ where
             raft_replica,
             timers: None,
             seed,
-            proposal_count:0
+            proposal_count: 0,
+            timer_on_ready_count: 0,
+            timer_tick_count: 0
         }
     }
 
@@ -316,10 +328,13 @@ where
             //println!("SCHEDULED PERIODICCCCCCC tick_timer");
             rc.tick()
         });
+
         self.timers = Some((ready_timer, tick_timer));
     }
 
     fn on_ready(&mut self) -> Handled {
+
+        self.timer_on_ready_count += 1;
 
         //println!("on_ready for node: {}, state: {}", self.pid, self.raft_replica.raw_raft.raft.state);
 
@@ -364,7 +379,7 @@ where
 
         //FIXED: send messages from here, replacing communicator logic TRIGGER RAFT REPLICA LOGIC WHEN RECIEVING CommunicatorMsg::RawRaftMsg
         // Send out the messages come from the node.
-        let mut ready_msgs = Vec::with_capacity(self.raft_replica.max_inflight);
+        let mut ready_msgs: Vec<Message> = Vec::with_capacity(self.raft_replica.max_inflight);
         std::mem::swap(&mut ready.messages, &mut ready_msgs);
         for msg in ready_msgs {
             //TODO: Send messages over the network to the destination RaftComp
@@ -377,6 +392,9 @@ where
                     msg
                 )
             });
+
+            println!("SENDING MESSAGE!!!!! TYPE: {:?}, FROM: {}, TO: {}", &msg.get_msg_type(), &msg.get_from(), &msg.get_to());
+
             receiver
                 .tell_serialised(RaftMsg(msg), self)
                 .expect("Should serialise RaftMsg");
@@ -493,7 +511,6 @@ where
                             //FIXED: Send messages from here replacing communicator logic SEND TO CLIENT
                             /*self.communication_port
                                 .trigger(CommunicatorMsg::ProposalResponse(pr));*/
-                            println!("478 proposal resp sent");
                             self.cached_client
                                 .as_ref()
                                 .expect("No cached client!")
@@ -510,7 +527,7 @@ where
                         //FIXED: Send messages from here replacing communicator logic, SEND TO CLIENT
                         /*self.communication_port
                             .trigger(CommunicatorMsg::ProposalResponse(pr));*/
-                        println!("495 proposal resp sent");
+                        //println!("495 proposal resp sent");
                         self.cached_client
                             .as_ref()
                             .expect("No cached client!")
@@ -568,6 +585,9 @@ where
     }
 
     fn tick(&mut self) -> Handled {
+
+        self.timer_tick_count += 1;
+
         //println!("TICKKKKKKKKK");
         self.raft_replica.raw_raft.tick();
         let leader = self.raft_replica.raw_raft.raft.leader_id;
@@ -677,7 +697,7 @@ where
             }
             None => {
                 self.proposal_count += 1;
-                println!("PROPPPP in raft. PID: {} Count: {}", self.pid, self.proposal_count);
+                //println!("PROPPPP in raft. PID: {} Count: {}", self.pid, self.proposal_count);
                 // i.e normal operation
                 let data = proposal.data;
                 self.raft_replica.raw_raft.propose(vec![], data).unwrap_or_else(|_| {
@@ -1003,7 +1023,7 @@ where
                             .try_deserialise_unchecked::<AtomicBroadcastMsg, AtomicBroadcastDeser>()
                             .expect("Should be AtomicBroadcastMsg!")
                         {
-                            println!("RAFT RECEIVE PROPOSEEEEEEE");
+                            //println!("RAFT RECEIVE PROPOSEEEEEEE");
                             self.raft_replica_receive_local_raftreplicamsg_propose(p);
                             /*self.raft_replica
                                 .as_ref()

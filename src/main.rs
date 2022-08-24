@@ -64,6 +64,8 @@ pub struct RaftState{
     //log_unstable: Unstable,
     log_committed: u64,
     log_applied: u64,
+    on_ready_count: u64,
+    tick_count: u64,
 }
 
 #[derive(Clone, Copy)]
@@ -111,7 +113,9 @@ impl GetState<RaftState> for Component<RaftComp<Storage>> {
             //log_entries: entries,
             //log_unstable: self.raft_replica.raw_raft.raft.raft_log.unstable.copy(),
             log_committed: def.raft_replica.raw_raft.raft.raft_log.committed,
-            log_applied: def.raft_replica.raw_raft.raft.raft_log.applied 
+            log_applied: def.raft_replica.raw_raft.raft.raft_log.applied,
+            on_ready_count: def.timer_on_ready_count,
+            tick_count: def.timer_tick_count
         }
     }
 }
@@ -250,25 +254,37 @@ fn create_client (
 
 
 
-fn deadlock_scenario_ready(simulation_scenario: &SimulationScenario<RaftState>) -> bool{
+fn livelock_scenario_ready(simulation_scenario: &SimulationScenario<RaftState>) -> Option<(usize, usize)>{
     let states = simulation_scenario.get_all_actor_states();
-    states[0].log_committed >= states[1].log_committed && states[1].log_committed > states[2].log_committed
+
+    let state = Some(states.iter().min_by_key(|e| e.log_committed).unwrap()).unwrap();
+    if state.log_committed < 50 {
+        println!("less than 50");
+        return None;
+    }
+
+    println!("more than 50");
+    println!("LOG LENGTHS: {}, {}, {}", states[0].log_committed, states[1].log_committed, states[2].log_committed);
+
+    if (states[1].log_committed >= states[0].log_committed && states[0].log_committed > states[2].log_committed) {
+        println!("breaking link betweeen 2, 3");
+        return Some((1, 2))
+    }
+
+    if (states[1].log_committed >= states[2].log_committed && states[2].log_committed > states[0].log_committed) {
+        println!("breaking link betweeen 2, 1");
+        return Some((1, 0))
+    }
+
+    return None
 }
-
-
-
-
-
-
-
-
 
 fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
     let mut rng = StdRng::seed_from_u64(5);
 
     let num_nodes = 3;
-    let num_proposals = 1000;
-    let concurrent_proposals = 1000;
+    let num_proposals = 3000;
+    let concurrent_proposals = 3000;
     let last_node_id = num_nodes;
     let iteration_id = 1;
 
@@ -368,13 +384,20 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
         client_comp.actor_ref().tell(LocalClientMessage::Propose(i));
     }
 
-    while !deadlock_scenario_ready(&simulation_scenario) {
-        println!("!!!waiting for deadlock scenariooooooo!!!");
+    loop {
+        if let Some(idxs) = livelock_scenario_ready(&simulation_scenario).take() {
+            simulation_scenario.break_link(&systems[idxs.0], &systems[idxs.1]);
+            break;
+        }
+
+        println!("!!!waiting for livelock scenariooooooo!!!");
         simulation_scenario.simulate_step();
     }
 
-    simulation_scenario.break_link(&systems[0], &systems[2]);
+    println!("LIVELOCK SCENARIO IS HERE, BREAKING LINKKKKK");
     //simulation_scenario.clog_system(&systems[0]);
+
+
     
     while finished_latch.count() > 0 {
         simulation_scenario.simulate_step();
@@ -382,17 +405,26 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
 
     let post_finished_latch = simulation_scenario.get_simulation_step_count();
 
+    /*for i in 0..20000 {simulation_scenario.simulate_step()
+    }*/
+
+    println!("post finished latch");
+
     let mut futures = vec![];
     for node in actor_refs {
         let (kprom, kfuture) = promise::<SequenceResp>();
         let ask = Ask::new(kprom, ());
+        println!("node tell get sequence");
         node.tell(GetSequence(ask));
         futures.push(kfuture);
     }
 
-    for i in 0..50 {
+    println!("post finished latch");
+
+    for i in 0..500 {
         simulation_scenario.simulate_step()
     }
+
 
     let sequence_responses: Vec<_> = FutureCollection::collect_results::<Vec<_>>(futures);
 
