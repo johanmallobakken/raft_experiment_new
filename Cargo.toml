@@ -12,7 +12,7 @@ protobuf        		= { version = "2" }
 futures         		= "0.1"
 futures-cpupool 		= "0.1"
 synchronoise 			= "1.0"
-slog 					= {version = "2.4", features = ["max_level_debug", "release_max_level_info"]}
+#slog 					= {version = "2.4", features = ["max_level_debug", "release_max_level_info"]}
 time 					= "0.1"
 num_cpus 				= "1"
 parse_duration 			= "2"
@@ -28,6 +28,12 @@ hdrhistogram            = "6.0"
 hocon 					= {version = "0.3.6", default-features = false}
 quanta                  = {version = "0.6.5", optional = true}
 leaderpaxos             = { git = "https://github.com/haraldng/omnipaxos", rev = "974b7ff24519b062a17faee5eb5c4443fa6cb5a2",  features = ["batch_accept"] }
+slog-async              = "2.3.0"
+slog                    = "2.2"
+slog-envlogger          = { version = "2.1.0", optional = true }
+slog-stdlog             = { version = "4", optional = true }
+slog-term               = "2.9.0"
+colored                 = "2.0.0"
 
 [dev-dependencies]
 uuid = { version = "0.8", features = ["v4"] }

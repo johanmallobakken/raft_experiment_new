@@ -19,6 +19,11 @@ use tikv_raft::{
     StateRole,
 };
 
+use colored::*;
+
+use slog::{error, info, o};
+use slog::Drain;
+
 const COMMUNICATOR: &str = "communicator";
 const DELAY: Duration = Duration::from_millis(0);
 
@@ -165,13 +170,14 @@ where
     pub proposal_count: u64,
     pub timer_on_ready_count: u64,
     pub timer_tick_count: u64,
+    logger: Logger
 }
 
 impl<S> RaftComp<S>
 where
     S: RaftStorage + Send + Clone + 'static,
 {
-    pub fn with(pid: u64, initial_config: Vec<u64>, reconfig_policy: ReconfigurationPolicy, seed: u64) -> Self {
+    pub fn with(pid: u64, initial_config: Vec<u64>, reconfig_policy: ReconfigurationPolicy, seed: u64, logger: Logger) -> Self {
         //TODO: fix not to have same seed on rng in raft and rng here, but idk
         //FIXED:: raft replica struct here
         //TODO: check for inconsistency in pid, update pid and peers len in create components???
@@ -211,7 +217,8 @@ where
             seed,
             proposal_count: 0,
             timer_on_ready_count: 0,
-            timer_tick_count: 0
+            timer_tick_count: 0,
+            logger
         }
     }
 
@@ -344,6 +351,37 @@ where
             return Handled::Ok;
         }
 
+        println!("{} {} {} {} {:?} {} {} {} {} {} {}",
+            "RaftNode: ".blue().bold(),
+            "id: ".bold(),
+            self.raft_replica.raw_raft.raft.id,
+            "state: ".bold(),
+            self.raft_replica.raw_raft.raft.state,
+            "term: ".bold(),
+            self.raft_replica.raw_raft.raft.term,
+            "applied: ".bold(),
+            self.raft_replica.raw_raft.raft.raft_log.applied,
+            "commit: ".bold(),
+            self.raft_replica.raw_raft.raft.raft_log.committed,
+            /*"last term: ".bold(),
+            self.raft_replica.raw_raft.raft.raft_log.last_term(),
+            "last index: ".bold(),
+            self.raft_replica.raw_raft.raft.raft_log.last_index(),*/
+        );
+
+
+        /*info!(
+            self.logger,
+            "RaftNode: {:?} ", self.raft_replica.raw_raft.raft.state;
+            "last index" => self.raft_replica.raw_raft.raft.raft_log.last_index(),
+            "last term" => self.raft_replica.raw_raft.raft.raft_log.last_term(),
+            "commit" => self.raft_replica.raw_raft.raft.raft_log.committed,
+            "applied" => self.raft_replica.raw_raft.raft.raft_log.applied,
+            "term" => self.raft_replica.raw_raft.raft.term,
+            "id" => self.raft_replica.raw_raft.raft.id,
+            //"peers" => ?self.raft_replica.raw_raft.raft.prs().conf().voters,
+        );*/
+
         //Get store and ready
 
         let mut store = self.raft_replica.raw_raft.raft.raft_log.store.clone();
@@ -393,7 +431,40 @@ where
                 )
             });
 
-            println!("SENDING MESSAGE!!!!! TYPE: {:?}, FROM: {}, TO: {}", &msg.get_msg_type(), &msg.get_from(), &msg.get_to());
+            /*debug!(
+                self.logger,
+                "Message: {:?}", &msg.get_msg_type();
+                "From" => &msg.get_from(),
+                "To" => &msg.get_to(),
+                "commit" => self.raft_replica.raw_raft.raft.raft_log.committed,
+                "applied" => self.raft_replica.raw_raft.raft.raft_log.applied,
+                "term" => self.raft_replica.raw_raft.raft.term,
+                "id" => self.raft_replica.raw_raft.raft.id,
+                //"peers" => ?self.raft_replica.raw_raft.raft.prs().conf().voters,
+            );*/
+
+            println!("{} {} {} {} {} {} {:?} {} {}",
+                "RaftMessage: ".red().bold(),
+                "from: ".bold(),
+                self.raft_replica.raw_raft.raft.id,
+                "to: ".bold(),
+                msg.to,
+                "type: ".bold(),
+                msg.get_msg_type(),
+                "term: ",
+                msg.term,
+            );
+
+            /*debug!(
+                self.logger,
+                "Sending from {from} to {to}",
+                from = self.raft_replica.raw_raft.raft.id,
+                to = msg.to;
+                "msg" => ?msg,
+            );*/
+    
+
+            //println!("SENDING MESSAGE!!!!! TYPE: {:?}, FROM: {}, TO: {}", &msg.get_msg_type(), &msg.get_from(), &msg.get_to());
 
             receiver
                 .tell_serialised(RaftMsg(msg), self)

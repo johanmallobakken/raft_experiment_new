@@ -1075,13 +1075,22 @@ fn create_nodes(
                     "replace-follower" => Some(RaftReconfigurationPolicy::ReplaceFollower),
                     unknown => panic!("Got unknown Raft transfer policy: {}", unknown),
                 };
+                let decorator = slog_term::TermDecorator::new().build();
+                let drain = slog_term::FullFormat::new(decorator).build().fuse();
+                let drain = slog_async::Async::new(drain)
+                    .chan_size(4096)
+                    .overflow_strategy(slog_async::OverflowStrategy::Block)
+                    .build()
+                    .fuse();
+                let logger = slog::Logger::root(drain, o!());
                 /*** Setup RaftComp ***/
                 let (raft_comp, unique_reg_f) = system.create_and_register(|| {
                     RaftComp::<Storage>::with(
                         i,
                         voters,
                         reconfig_policy.unwrap_or(RaftReconfigurationPolicy::ReplaceFollower),
-                        1
+                        1,
+                        logger
                     )
                 });
                 unique_reg_f.wait_expect(REGISTER_TIMEOUT, "RaftComp failed to register!");

@@ -23,7 +23,8 @@ use atomic_broadcast::{
     },
     messages::Proposal
 };
-
+use slog::{error, info, o, Logger};
+use slog::Drain;
 use tikv_raft::eraftpb::Entry;
 use synchronoise::CountdownEvent;
 use tikv_raft::{storage::MemStorage, StateRole, RaftLog, Storage as TikvStorage};
@@ -137,8 +138,17 @@ fn todo_raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>)
         last_node_id: 3,
         iteration_id: 1,
     };
+
+    let decorator = slog_term::TermDecorator::new().build();
+    let drain = slog_term::FullFormat::new(decorator).build().fuse();
+    let drain = slog_async::Async::new(drain)
+        .chan_size(4096)
+        .overflow_strategy(slog_async::OverflowStrategy::Block)
+        .build()
+        .fuse();
+    let logger = slog::Logger::root(drain, o!());
     //Create nodes function invocation 1
-    let (systems, actor_paths, actor_refs, simulation_scenario) = create_nodes(simulation_scenario, simulation_config);
+    let (systems, actor_paths, actor_refs, simulation_scenario) = create_nodes(simulation_scenario, simulation_config, logger);
     let (client_comp, client_path, simulation_scenario) = create_client(simulation_scenario, actor_paths, simulation_config);
     //Create state monitors/inspections invariants 3
     //Register state monitors (implicitly checked for every step) 3
@@ -149,7 +159,8 @@ fn todo_raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>)
 
 fn create_nodes(
     mut simulation_scenario: SimulationScenario<RaftState>, 
-    sim_conf: SimulationConfig
+    sim_conf: SimulationConfig,
+    logger: Logger,
 ) -> (Vec<KompactSystem>, Vec<ActorPath>, Vec<Recipient<GetSequence>>, SimulationScenario<RaftState>) {
     //CREATE NODES TDOD: extract to separate method
     let mut systems = Vec::with_capacity(sim_conf.num_nodes as usize);
@@ -167,7 +178,8 @@ fn create_nodes(
                 i,
                 voters,
                 RaftReconfigurationPolicy::ReplaceFollower,
-                1
+                1,
+                logger.clone(),
             )
         }, REGISTER_TIMEOUT);
 
@@ -280,6 +292,17 @@ fn livelock_scenario_ready(simulation_scenario: &SimulationScenario<RaftState>) 
 }
 
 fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
+
+    let decorator = slog_term::TermDecorator::new().build();
+    let drain = slog_term::FullFormat::new(decorator).build().fuse();
+    let drain = slog_async::Async::new(drain)
+        .chan_size(4096)
+        .overflow_strategy(slog_async::OverflowStrategy::Block)
+        .build()
+        .fuse();
+    let logger = slog::Logger::root(drain, o!());
+
+
     let mut rng = StdRng::seed_from_u64(5);
 
     let num_nodes = 3;
@@ -304,7 +327,8 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
                 i,
                 voters,
                 RaftReconfigurationPolicy::ReplaceFollower,
-                rng.gen::<u64>()
+                rng.gen::<u64>(),
+                logger.clone()
             )
         }, REGISTER_TIMEOUT);
 
@@ -425,13 +449,14 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
         simulation_scenario.simulate_step()
     }
 
-
+    /* 
     let sequence_responses: Vec<_> = FutureCollection::collect_results::<Vec<_>>(futures);
 
     let quorum_size = num_nodes as usize / 2 + 1;
     check_quorum(&sequence_responses, quorum_size, num_proposals);
     check_validity(&sequence_responses, num_proposals);
     check_uniform_agreement(&sequence_responses);
+    */
 
     // CLEANUOP ITERATION
 

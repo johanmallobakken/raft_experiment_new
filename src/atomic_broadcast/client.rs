@@ -373,7 +373,7 @@ impl Client {
         let mut data: Vec<u8> = Vec::with_capacity(8);
         data.put_u64(id);
         let p = Proposal::normal(data);
-        println!("SENDING PROPOSAL TO LEADER, CURRENT LEADER: {}", self.current_leader);
+        //println!("SENDING PROPOSAL TO LEADER, CURRENT LEADER: {}", self.current_leader);
         let leader = self.nodes.get(&self.current_leader).unwrap().clone();
         leader.tell_serialised(AtomicBroadcastMsg::Proposal(p), self).expect("Should serialise Proposal");
         let timer = self.schedule_once(self.timeout, move |c, _| c.proposal_timeout(id));
@@ -461,7 +461,7 @@ impl Client {
             }
             for (id, start_time) in retry_proposals {
                 self.propose_normal(id);
-                println!("RETRY PROPOSAL TIMEOUT");
+                //println!("RETRY PROPOSAL TIMEOUT");
                 let timer = self.schedule_once(self.timeout, move |c, _| c.proposal_timeout(id));
                 let meta = ProposalMetaData::with(start_time, timer);
                 self.pending_proposals.insert(id, meta);
@@ -471,7 +471,7 @@ impl Client {
     }
 
     fn handle_normal_response(&mut self, id: u64, latency_res: Option<Duration>) {
-        println!("Got response {}!!!!!", id);
+        //println!("Got response {}!!!!!", id);
         #[cfg(feature = "track_timestamps")]
         {
             let timestamp = self.clock.now();
@@ -544,13 +544,13 @@ impl Client {
             ));
             proposal_meta.set_timer(timer);
         } else {
-            println!("PROPOSAL TIMEOUT ID: {}", id);
+            //println!("PROPOSAL TIMEOUT ID: {}", id);
             self.num_timed_out += 1;
             let proposal_meta = self
                 .pending_proposals
                 .remove(&id)
                 .expect("Timed out on proposal not in pending proposals");
-            println!("RESENDING TIMED OUT PROPOSAL ID: {}", id);
+            //println!("RESENDING TIMED OUT PROPOSAL ID: {}", id);
             self.propose_normal(id);
 
             /* 
@@ -785,7 +785,7 @@ impl Actor for Client {
                         //}
                     },
                     AtomicBroadcastMsg::ProposalResp(pr) => {
-                        println!("PROPOSAL RESP RECEIVED");
+                        //println!("PROPOSAL RESP RECEIVED");
                         if self.state == ExperimentState::Finished || self.state == ExperimentState::LeaderElection { 
                             //println!("self.state finished?: {}", self.state == ExperimentState::Finished);
                             //println!("self.state LeaderElection?: {}", self.state == ExperimentState::LeaderElection);
@@ -796,8 +796,8 @@ impl Actor for Client {
 
                         match response {
                             Response::Normal(id) => {
-                                println!("normal response");
-                                println!("RESPONSE IS {}", id);
+                                //println!("normal response");
+                                //println!("RESPONSE IS {}", id);
                                 if let Some(proposal_meta) = self.pending_proposals.remove(&id) {
                                     let latency = match proposal_meta.start_time {
                                         Some(start_time) => Some(start_time.elapsed().expect("Failed to get elapsed duration")),
@@ -814,7 +814,7 @@ impl Actor for Client {
                                     }
                                     self.handle_normal_response(id, latency);
                                     if self.state != ExperimentState::ReconfigurationElection {
-                                        println!("send concurrent?");
+                                        //println!("send concurrent?");
                                         //self.send_concurrent_proposals();
                                     }
                                 }
