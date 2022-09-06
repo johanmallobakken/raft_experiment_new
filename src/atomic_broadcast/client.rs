@@ -8,7 +8,7 @@ use kompact::{prelude::*, messaging::NetData};
 use quanta::{Clock, Instant};
 use std::{
     sync::Arc,
-    time::{Duration, SystemTime}, borrow::BorrowMut,
+    time::{Duration, SystemTime}, borrow::BorrowMut, thread,
 };
 use synchronoise::{event::CountdownError, CountdownEvent};
 use super::serialiser_ids;
@@ -296,6 +296,7 @@ pub struct Client {
     first_proposal_after_reconfig: Option<u64>,
     retry_proposals: Vec<(u64, Option<SystemTime>)>,
     stop_ask: Option<Ask<(), MetaResults>>,
+    logger: Logger,
     //P Actor vars
     n: u32,
     init_id: u32,
@@ -326,7 +327,8 @@ impl Client {
         leader_election_latch: Arc<CountdownEvent>,
         finished_latch: Arc<CountdownEvent>,
         prepare_latch: Arc<CountdownEvent>,
-        node_vec: Vec<ActorPath>
+        node_vec: Vec<ActorPath>,
+        logger: Logger,
     ) -> Client {
         println!("CREATING CLIENT");
         Client {
@@ -354,6 +356,7 @@ impl Client {
             node_vec,
             init_ack_count: 0,
             prepare_latch,
+            logger,
             #[cfg(feature = "track_timeouts")]
             timeouts: vec![],
             #[cfg(feature = "track_timeouts")]
@@ -393,7 +396,7 @@ impl Client {
         println!("PROPOSING RECONFIG!!!!!!!!");
         let reconfig = self.reconfig.as_ref().unwrap();
         debug!(
-            self.ctx.log(),
+            self.logger, //ctx.log(),
             "{}",
             format!("Sending reconfiguration: {:?}", reconfig)
         );
@@ -404,7 +407,7 @@ impl Client {
             .expect("Should serialise reconfig Proposal");
         #[cfg(feature = "track_timeouts")]
         {
-            info!(self.ctx.log(), "Proposed reconfiguration. latest_proposal_id: {}, timed_out: {}, pending proposals: {}, min: {:?}, max: {:?}",
+            info!(self.logger, "Proposed reconfiguration. latest_proposal_id: {}, timed_out: {}, pending proposals: {}, min: {:?}, max: {:?}",
                 self.latest_proposal_id, self.num_timed_out, self.pending_proposals.len(), self.pending_proposals.keys().min(), self.pending_proposals.keys().max());
         }
     }
@@ -457,7 +460,7 @@ impl Client {
                 let max = retry_proposals.iter().max();
                 let count = retry_proposals.len();
                 let num_pending = self.pending_proposals.len();
-                info!(self.ctx.log(), "Retrying proposals to node {}. Count: {}, min: {:?}, max: {:?}, num_pending: {}", self.current_leader, count, min, max, num_pending);
+                info!(self.logger, "Retrying proposals to node {}. Count: {}, min: {:?}, max: {:?}, num_pending: {}", self.current_leader, count, min, max, num_pending);
             }
             for (id, start_time) in retry_proposals {
                 self.propose_normal(id);
@@ -486,7 +489,7 @@ impl Client {
                 .decrement()
                 .expect("Failed to countdown finished latch");
             if self.num_timed_out > 0 {
-                info!(self.ctx.log(), "Got all responses with {} timeouts, Number of leader changes: {}, {:?}, Last leader was: {}", self.num_timed_out, self.leader_changes.len(), self.leader_changes, self.current_leader);
+                info!(self.logger, "Got all responses with {} timeouts, Number of leader changes: {}, {:?}, Last leader was: {}", self.num_timed_out, self.leader_changes.len(), self.leader_changes, self.current_leader);
                 #[cfg(feature = "track_timeouts")]
                 {
                     let min = self.timeouts.iter().min();
@@ -494,7 +497,7 @@ impl Client {
                     let late_min = self.late_responses.iter().min();
                     let late_max = self.late_responses.iter().max();
                     info!(
-                        self.ctx.log(),
+                        self.logger,
                         "Timed out: Min: {:?}, Max: {:?}. Late responses: {}, min: {:?}, max: {:?}",
                         min,
                         max,
@@ -505,7 +508,7 @@ impl Client {
                 }
             } else {
                 info!(
-                    self.ctx.log(),
+                    self.logger,
                     "Got all responses. Number of leader changes: {}, {:?}, Last leader was: {}",
                     self.leader_changes.len(),
                     self.leader_changes,
@@ -531,7 +534,7 @@ impl Client {
             println!("PROPOSAL DID NOT TIME OUT");
             return Handled::Ok;
         }
-        info!(self.ctx.log(), "Timed out proposal {}", id);
+        info!(self.logger, "Timed out proposal {}", id);
         if id == RECONFIG_ID {
             println!("RECONFIG ID????????");
             if let Some(leader) = self.nodes.get(&self.current_leader) {
@@ -759,7 +762,7 @@ impl Actor for Client {
                         self.current_leader = pid;
                         if self.leader_election_latch.count() > 0{
                             match self.leader_election_latch.decrement() {
-                                Ok(_) => info!(self.ctx.log(), "Got first leader: {}", pid),
+                                Ok(_) => info!(self.logger, "Got first leader: {}", pid),
                                 Err(e) => if e != CountdownError::AlreadySet {
                                     panic!("Failed to decrement election latch: {:?}", e);
                                 }
@@ -805,7 +808,7 @@ impl Actor for Client {
                                     };
                                     self.cancel_timer(proposal_meta.timer);
                                     if self.current_config.contains(&pr.latest_leader) && self.current_leader != pr.latest_leader && self.state != ExperimentState::ReconfigurationElection {
-                                        info!(self.ctx.log(), "Got leader in normal response: {}. old: {}", pr.latest_leader, self.current_leader);
+                                        info!(self.logger, "Got leader in normal response: {}. old: {}", pr.latest_leader, self.current_leader);
                                         self.current_leader = pr.latest_leader;
                                         self.leader_changes.push(pr.latest_leader);
                                         #[cfg(feature = "track_timestamps")] {
@@ -836,12 +839,12 @@ impl Actor for Client {
                                         self.state = ExperimentState::Finished;
                                         println!("decrement finished latch 564 response reconfig");
                                         self.finished_latch.decrement().expect("Failed to countdown finished latch");
-                                        info!(self.ctx.log(), "Got reconfig at last. {} proposals timed out. Leader changes: {}, {:?}, Last leader was: {}", self.num_timed_out, self.leader_changes.len(), self.leader_changes, self.current_leader);
+                                        info!(self.logger, "Got reconfig at last. {} proposals timed out. Leader changes: {}, {:?}, Last leader was: {}", self.num_timed_out, self.leader_changes.len(), self.leader_changes, self.current_leader);
                                     } else {
                                         self.reconfig = None;
                                         self.current_config = new_config;
                                         let leader_changed = self.current_leader != pr.latest_leader;
-                                        info!(self.ctx.log(), "Reconfig OK, leader: {}, old: {}, current_config: {:?}", pr.latest_leader, self.current_leader, self.current_config);
+                                        info!(self.logger, "Reconfig OK, leader: {}, old: {}, current_config: {:?}", pr.latest_leader, self.current_leader, self.current_config);
                                         self.current_leader = pr.latest_leader;
                                         if self.current_leader == 0 {   // Paxos or Raft-remove-leader: wait for leader in new config
                                             self.state = ExperimentState::ReconfigurationElection;
@@ -886,14 +889,14 @@ impl Actor for Client {
                     AtomicBroadcastMsg::PActorInitAck(id) => {
                         println!("PARTITIONING ACTOR INIT ACK");
                         self.init_ack_count += 1;
-                        debug!(self.ctx.log(), "Got init ack {}/{}", &self.init_ack_count, &self.n);
+                        debug!(self.logger, "Got init ack {}/{}", &self.init_ack_count, &self.n);
                         if self.init_ack_count == self.n {
                             self.prepare_latch
                                 .decrement()
                                 .expect("Latch didn't decrement!");
                         }
                     },
-                    _ => error!(self.ctx.log(), "Client received unexpected msg"),
+                    _ => error!(self.logger, "Client received unexpected msg"),
                 }
             },
             msg(stop): NetStopMsg [using StopMsgDeser] => {
@@ -904,7 +907,7 @@ impl Actor for Client {
                     }
                 }
             },
-            err(e) => error!(self.ctx.log(), "{}", &format!("Client failed to deserialise msg: {:?}", e)),
+            err(e) => error!(self.logger, "{}", &format!("Client failed to deserialise msg: {:?}", e)),
             default(_) => unimplemented!("Should be either AtomicBroadcastMsg or NetStopMsg"),
         }
         }

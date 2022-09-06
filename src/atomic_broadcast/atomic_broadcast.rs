@@ -331,6 +331,11 @@ impl AtomicBroadcastMaster {
     ) -> (Arc<Component<Client>>, ActorPath) {
         let system = self.system.as_ref().unwrap();
         let finished_latch = self.finished_latch.clone().unwrap();
+        let decorator = slog_term::TermDecorator::new().build();
+        let drain = slog_term::FullFormat::new(decorator).build().fuse();
+        let drain = slog_async::Async::new(drain).chan_size(4096).build().fuse();
+    
+        let logger = slog::Logger::root(drain, o!());
         /*** Setup client ***/
         let initial_config: Vec<_> = (1..=self.num_nodes.unwrap()).map(|x| x as u64).collect();
         let (client_comp, unique_reg_f) = system.create_and_register(|| {
@@ -344,7 +349,8 @@ impl AtomicBroadcastMaster {
                 leader_election_latch,
                 finished_latch.clone(),
                 finished_latch.clone(), //quick fix,
-                nodes_id.values().cloned().collect()
+                nodes_id.values().cloned().collect(),
+                logger
             )
         });
         unique_reg_f.wait_expect(REGISTER_TIMEOUT, "Client failed to register!");
