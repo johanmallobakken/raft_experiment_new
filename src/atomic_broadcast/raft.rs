@@ -28,24 +28,25 @@ const DELAY: Duration = Duration::from_millis(0);
 
 
 fn create_rawraft_config(pid: u64, seed: u64) -> Config {
-    /*Config {
+    Config {
         id: pid,
         seed,
         election_tick: 5,
         heartbeat_tick: 1,
-        max_inflight_msgs: 100000,
+        //batch_append: true,
+        //skip_bcast_commit: true,
+        pre_vote: false,
+        check_quorum: false,
         ..Default::default()
-    }*/
-
+    }
     //let config = self.ctx.config();
+    /* 
+
     let max_inflight_msgs = 100000;
     /*config["experiment"]["max_inflight"]
         .as_i64()
         .expect("Failed to load max_inflight") as usize;*/
     let mut election_timeout = 500;
-    if pid == 1 {
-        election_timeout = 1000;
-    }
     /*config["experiment"]["election_timeout"]
         .as_i64()
         .expect("Failed to load election_timeout") as usize;*/
@@ -88,7 +89,7 @@ fn create_rawraft_config(pid: u64, seed: u64) -> Config {
         ..Default::default()
     };
     assert!(c.validate().is_ok(), "Invalid RawRaft config");
-    c
+    c*/
 }
 
 #[derive(Debug)]
@@ -367,9 +368,20 @@ where
         }
 
         if self.raft_replica.raw_raft.raft.state != self.state {
+            let old_state = self.state;
             self.state = self.raft_replica.raw_raft.raft.state;
             if self.state == StateRole::Leader{
+                info!(
+                    self.logger, 
+                    "BECAME LEADER id: {} Changed from: {:?} to: {:?} became leader count: {}", self.pid, old_state, self.state, self.became_leader_count
+                );
+
                 self.became_leader_count += 1;
+
+                info!(
+                    self.logger, 
+                    "Post BECAME LEADER id: {} Changed from: {:?} to: {:?} became leader count: {}", self.pid, old_state, self.state, self.became_leader_count
+                );
             }
         }
 
@@ -393,17 +405,7 @@ where
         );*/
 
 
-        /*info!(
-            self.logger,
-            "RaftNode: {:?} ", self.raft_replica.raw_raft.raft.state;
-            "last index" => self.raft_replica.raw_raft.raft.raft_log.last_index(),
-            "last term" => self.raft_replica.raw_raft.raft.raft_log.last_term(),
-            "commit" => self.raft_replica.raw_raft.raft.raft_log.committed,
-            "applied" => self.raft_replica.raw_raft.raft.raft_log.applied,
-            "term" => self.raft_replica.raw_raft.raft.term,
-            "id" => self.raft_replica.raw_raft.raft.id,
-            //"peers" => ?self.raft_replica.raw_raft.raft.prs().conf().voters,
-        );*/
+        //println!("RaftNode: {:?}, last index {} id {}", self.raft_replica.raw_raft.raft.state, self.raft_replica.raw_raft.raft.raft_log.last_index(), self.raft_replica.raw_raft.raft.id);
 
         //Get store and ready
 

@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, time::Duration, sync::Arc, borrow::BorrowMut, fmt::Display, thread};
+use std::{net::SocketAddr, time::Duration, sync::Arc, borrow::BorrowMut, fmt::Display, thread, fs::OpenOptions};
 
 use crate::atomic_broadcast::{atomic_broadcast::{run_experiment, check_quorum, check_validity, check_uniform_agreement}, partitioning_actor::IterationControlMsg, client::LocalClientMessage};
 
@@ -23,14 +23,14 @@ use atomic_broadcast::{
     },
     messages::Proposal
 };
-use slog::{error, info, o, Logger};
+use slog::{error, info, o, Logger, Level};
 use slog::Drain;
 use tikv_raft::eraftpb::Entry;
 use synchronoise::CountdownEvent;
 use tikv_raft::{storage::MemStorage, StateRole, RaftLog, Storage as TikvStorage};
 use kompact::prelude::ActorRefFactory;
 type Storage = MemStorage;
-
+use std::io::Write;
 
 fn get_experiment_configs(last_node_id: u64) -> (Vec<u64>, Vec<u64>) {
     if last_node_id % 2 == 0 {
@@ -56,17 +56,15 @@ impl Into<RaftCompMsg> for GetSequence {
 pub struct RaftState{
     id: u64,
     term: u64,
-    vote: u64, //?
+    vote: u64,
     state: StateRole,
     leader_id: u64,
-    //RAFT LOG
-    //log_entries: Vec<Entry>,
-    log_entries_len: usize,
-    //log_unstable: Unstable,
+    log_unstable: u64,
     log_committed: u64,
     log_applied: u64,
-    on_ready_count: u64,
-    tick_count: u64,
+    //on_ready_count: u64,
+    //tick_count: u64,
+    log_last_index: u64,
     became_leader_count: u64,
     randomized_election_timeout: u64
 }
@@ -88,37 +86,20 @@ impl Display for RaftState{
 
 impl GetState<RaftState> for Component<RaftComp<Storage>> {
     fn get_state(&self) -> RaftState {
-
         let def = &self.mutable_core.lock().unwrap().definition;
-
         let log = def.raft_replica.raw_raft.raft.raft_log.get_store();
-
-        let mut entries:Vec<Entry> = vec![];
-
-        if log.last_index().unwrap() > 1 {
-            //println!("{}", log.last_index().unwrap());
-            entries = log.entries(log.first_index().unwrap(), log.last_index().unwrap() + 1 , None).unwrap();
-        }
-
-        /*if log.entries().is_ok() {
-            //println!("{}", log.last_index().unwrap());
-            entries = log.entries(log.first_index().unwrap(), log.last_index().unwrap(), 9999).unwrap();
-        }*/
-
         RaftState {
             id: def.raft_replica.raw_raft.raft.id,
             term: def.raft_replica.raw_raft.raft.term,
             vote: def.raft_replica.raw_raft.raft.vote,
             state: def.raft_replica.raw_raft.raft.state,
             leader_id: def.raft_replica.raw_raft.raft.leader_id,
-            //RAFT LOG
-            log_entries_len: entries.len(),
-            //log_entries: entries,
-            //log_unstable: self.raft_replica.raw_raft.raft.raft_log.unstable.copy(),
+            log_unstable: def.raft_replica.raw_raft.raft.raft_log.unstable.entries.len() as u64,
             log_committed: def.raft_replica.raw_raft.raft.raft_log.committed,
             log_applied: def.raft_replica.raw_raft.raft.raft_log.applied,
-            on_ready_count: def.timer_on_ready_count,
-            tick_count: def.timer_tick_count,
+            //on_ready_count: def.timer_on_ready_count,
+            //tick_count: def.timer_tick_count,
+            log_last_index: def.raft_replica.raw_raft.raft.raft_log.last_index(),
             became_leader_count: def.became_leader_count,
             randomized_election_timeout: def.raft_replica.raw_raft.raft.get_randomized_election_timeout() as u64
             
@@ -229,7 +210,7 @@ fn create_client (
             sim_conf.concurrent_proposals,
             nodes_id,
             None,
-            Duration::from_millis(2000),
+            Duration::from_millis(500),
             leader_election_latch.clone(),
             finished_latch.clone(),
             prepare_latch.clone(),
@@ -273,17 +254,17 @@ fn create_client (
 fn livelock_scenario_ready(simulation_scenario: &SimulationScenario<RaftState>) -> Option<(usize, usize)>{
     let states = simulation_scenario.get_all_actor_states();
 
-    let state = Some(states.iter().min_by_key(|e| e.log_committed).unwrap()).unwrap();
-    if state.log_committed < 100 {
+    let state = Some(states.iter().min_by_key(|e| e.log_last_index).unwrap()).unwrap();
+    if state.log_last_index < 200 {
         println!("less than 20");
         return None;
     }
 
     println!("more than 50");
-    println!("LOG LENGTHS: {}, {}, {}", states[0].log_committed, states[1].log_committed, states[2].log_committed);
+    println!("LOG LENGTHS: {}, {}, {}", states[0].log_last_index, states[1].log_last_index, states[2].log_last_index);
 
     let leader = states.iter().filter(|e| e.state == StateRole::Leader).last().unwrap().id;
-    let min = states.iter().min_by_key(|e| e.log_committed).unwrap().id;
+    let min = states.iter().min_by_key(|e| e.log_last_index).unwrap().id;
     let other = states.iter().filter(|e| e.id != min && e.id != leader).last().unwrap().id  as usize;
 
     let leader = leader as usize;
@@ -293,7 +274,7 @@ fn livelock_scenario_ready(simulation_scenario: &SimulationScenario<RaftState>) 
         return None
     }
 
-    if states[min-1].log_committed == states[other-1].log_committed || states[other-1].log_committed == states[leader-1].log_committed{
+    if states[min-1].log_last_index == states[other-1].log_last_index || states[other-1].log_last_index == states[leader-1].log_last_index{
         return None
     }
 
@@ -332,7 +313,7 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>, seed
     let mut rng = StdRng::seed_from_u64(seed);
 
     let num_nodes = 3;
-    let num_proposals = 5000;
+    let num_proposals = 3000;
     let concurrent_proposals = 3000;
     let last_node_id = num_nodes;
     let iteration_id = 1;
@@ -395,7 +376,7 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>, seed
             concurrent_proposals,
             nodes_id,
             None,
-            Duration::from_millis(20000),
+            Duration::from_millis(5000),
             leader_election_latch.clone(),
             finished_latch.clone(),
             prepare_latch.clone(),
@@ -435,6 +416,8 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>, seed
         client_comp.actor_ref().tell(LocalClientMessage::Propose(i));
     }
 
+    let mut post_break_link = 0;
+
     loop {
         if let Some(idxs) = livelock_scenario_ready(&simulation_scenario).take() {
 
@@ -454,6 +437,7 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>, seed
     println!("LIVELOCK SCENARIO IS HERE, BREAKING LINKKKKK");
     //simulation_scenario.clog_system(&systems[0]);
 
+    let post_break_link = simulation_scenario.get_simulation_step_count();
 
     
     while finished_latch.count() > 0 {
@@ -478,7 +462,7 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>, seed
 
     println!("post finished latch");
 
-    for i in 0..500 {
+    for i in 0..1000 {
         simulation_scenario.simulate_step()
     }
 
@@ -515,6 +499,16 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>, seed
         .shutdown()
         .expect("Kompact didn't shut down properly");
 
+
+    let mut file = OpenOptions::new()
+        .write(true)
+        .append(true)
+        .open("state.txt")
+        .unwrap();
+
+    if let Err(e) = writeln!(file, "BreakLink {}", post_break_link.to_string()) {
+        eprintln!("Couldn't write to file: {}", e);
+    }
     return simulation_scenario.get_all_actor_states();
 }
 
@@ -523,7 +517,7 @@ struct RaftInvariantChecker{}
 impl RaftInvariantChecker {
     fn log_length_more_or_eq_500(states: Vec<RaftState>) -> bool{
         for state in states {
-            if state.log_entries_len < 500 {
+            if state.log_unstable < 500 {
                 return false;
             }
         }
@@ -541,12 +535,12 @@ impl Invariant<RaftState> for RaftInvariantChecker {
     }
 }
 
-fn raft_five_node_livelock_test(mut simulation_scenario: SimulationScenario<RaftState>, seed: u64) -> Vec<RaftState> {
-    let decorator = slog_term::TermDecorator::new().build();
+fn raft_five_node_livelock_test(mut simulation_scenario: SimulationScenario<RaftState>, seed: u64, logger: Logger) -> Vec<RaftState> {
+    /*let decorator = slog_term::TermDecorator::new().build();
     let drain = slog_term::FullFormat::new(decorator).build().fuse();
     let drain = slog_async::Async::new(drain).chan_size(4096).build().fuse();
 
-    let logger = slog::Logger::root(drain, o!());
+    let logger = slog::Logger::root(drain, o!());*/
 
 
     let mut rng = StdRng::seed_from_u64(seed);
@@ -635,6 +629,24 @@ fn raft_five_node_livelock_test(mut simulation_scenario: SimulationScenario<Raft
         .serialise(&mut ser_client)
         .expect("Failed to serialise ClientComp actorpath");
 
+    /* 
+    simulation_scenario.break_link(&systems[4], &systems[0]);
+    simulation_scenario.break_link(&systems[4], &systems[1]);
+    simulation_scenario.break_link(&systems[4], &systems[3]);
+
+    simulation_scenario.break_link(&systems[0], &systems[4]);
+    simulation_scenario.break_link(&systems[1], &systems[4]);
+    simulation_scenario.break_link(&systems[3], &systems[4]);
+
+    //break link between 4 and everyone else except 2
+    simulation_scenario.break_link(&systems[3], &systems[0]);
+    simulation_scenario.break_link(&systems[3], &systems[2]);
+    simulation_scenario.break_link(&systems[3], &systems[4]);
+
+    simulation_scenario.break_link(&systems[0], &systems[3]);
+    simulation_scenario.break_link(&systems[2], &systems[3]);
+    simulation_scenario.break_link(&systems[4], &systems[3]);*/
+
     client_comp.actor_ref().tell(LocalClientMessage::Prepare(Some(ser_client)));
 
     while prepare_latch.count() > 0 {
@@ -651,24 +663,8 @@ fn raft_five_node_livelock_test(mut simulation_scenario: SimulationScenario<Raft
 
     let post_leader_election_count = simulation_scenario.get_simulation_step_count();
 
-
+    /* */
     //break link between 5 and everyone else except 3
-    simulation_scenario.break_link(&systems[4], &systems[0]);
-    simulation_scenario.break_link(&systems[4], &systems[1]);
-    simulation_scenario.break_link(&systems[4], &systems[3]);
-
-    simulation_scenario.break_link(&systems[0], &systems[4]);
-    simulation_scenario.break_link(&systems[1], &systems[4]);
-    simulation_scenario.break_link(&systems[3], &systems[4]);
-
-    //break link between 4 and everyone else except 2
-    simulation_scenario.break_link(&systems[3], &systems[0]);
-    simulation_scenario.break_link(&systems[3], &systems[2]);
-    simulation_scenario.break_link(&systems[3], &systems[4]);
-
-    simulation_scenario.break_link(&systems[0], &systems[3]);
-    simulation_scenario.break_link(&systems[2], &systems[3]);
-    simulation_scenario.break_link(&systems[4], &systems[3]);
 
 
     for i in 1..(num_proposals+1) {
@@ -715,7 +711,7 @@ fn raft_five_node_livelock_test(mut simulation_scenario: SimulationScenario<Raft
 
     println!("post finished latch");
 
-    for i in 0..500 {
+    for i in 0..5000 {
         simulation_scenario.simulate_step()
     }
 
@@ -752,25 +748,45 @@ fn raft_five_node_livelock_test(mut simulation_scenario: SimulationScenario<Raft
         .shutdown()
         .expect("Kompact didn't shut down properly");
 
+    /* 
+    let mut file = OpenOptions::new()
+        .write(true)
+        .append(true)
+        .open("state.txt")
+        .unwrap();
+
+    if let Err(e) = writeln!(file, "A new line!") {
+        eprintln!("Couldn't write to file: {}", e);
+    }*/
+
     return simulation_scenario.get_all_actor_states();
 }
 
 fn main() {
 
+    //Three node partition
+
     //tested 0..26 not successful election_timeout 500
-    /*for i in 8..100 {
+    //81, 115, 152, 215, 284 (client problems?) with 1 5
+    //80-140 covere with no problem 1 10
+    for i in 500..1000 {
         println!("starting simulation {}", i);
         //5 gives interesting result?=??
         let decorator = slog_term::TermDecorator::new().build();
         let drain = slog_term::FullFormat::new(decorator).build().fuse();
-        let drain = slog_async::Async::new(drain).chan_size(16384).build().fuse();
+        let drain = slog_async::Async::new(drain).chan_size(16384).build().filter(|r| r.level() == Level::Info).fuse();
+
+        //let filter = slog::Filter(drain, |r| r.level() == Level::Info);
     
-        let logger = slog::Logger::root(slog::Discard, o!());
+        let logger = slog::Logger::root(drain, o!());
         let mut simulation_scenario: SimulationScenario<RaftState> = SimulationScenario::new();
         let states =  raft_normal_test(simulation_scenario,i, logger);
+
+        //std::thread::sleep(Duration::from_millis(10000));
+
         println!("ending simulation {}", i);
-
-
+        
+        
         let ss: Vec<u64> = states.clone().into_iter()
             .map(|s| s.log_applied)
             .collect::<HashSet<_>>()
@@ -785,20 +801,25 @@ fn main() {
             println!("");
             break
         }
-    }*/
 
-    //14 gives interesting results
-    let i = 8;
+        println!("{:?}", states);
+
+    }
+
+    //5 node stuff
+
+    /*//14 gives interesting results
+    let i = 1;
     //println!("starting simulation {}", i);
     //5 gives interesting result?=??
     let decorator = slog_term::TermDecorator::new().build();
     let drain = slog_term::FullFormat::new(decorator).build().fuse();
     let drain = slog_async::Async::new(drain).chan_size(16384).build().fuse();
-
+    //let logger = slog::Logger::root(slog::Discard, o!());
     let logger = slog::Logger::root(drain, o!());
     //println!("starting simulation {}", i);
     let mut simulation_scenario: SimulationScenario<RaftState> = SimulationScenario::new();
-    let states =  raft_normal_test(simulation_scenario,i, logger);
+    let states =  raft_five_node_livelock_test(simulation_scenario,i, logger);
     //println!("ending simulation {}", i);
 
 
@@ -807,6 +828,6 @@ fn main() {
         println!("{}", i);
         println!("{:?}", states);
         println!("");
-    }
+    }*/
 }
 //Executing task: cargo run --package kompact_benchmarks --bin kompact_benchmarks 
