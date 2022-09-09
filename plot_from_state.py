@@ -1,6 +1,10 @@
 import re
 import matplotlib.pyplot as plt
 import collections
+from matplotlib.pyplot import figure
+
+
+figure(figsize=(3, 2), dpi=100)
 
 file1 = open('state.txt', 'r')
 Lines = file1.readlines()
@@ -25,6 +29,8 @@ for line in Lines:
         print(count)
         simulation_steps.append(count)
 
+
+
 fig, ax = plt.subplots()
 
 if broken_link_step: 
@@ -47,13 +53,15 @@ else:
         ax.plot(simulation_steps, logs[i+1], label = ("Node " + str(i+1)))
 
 
-plt.xlabel('Simulation steps')
+plt.xlabel('Simulation steps', fontsize=20)
 # naming the y axis
-plt.ylabel('Log lengths')
+plt.ylabel('Log lengths', fontsize=20)
 # giving a title to my graph
-plt.title('Log lengths over simulation step time')
-# show a legend on the plot
-plt.legend()
+plt.title('Log lengths over simulation step time', fontsize=20)
+
+plt.xticks(fontsize=20)
+plt.yticks(fontsize=20)
+plt.legend(fontsize=20)
 
 # function to show the plot
 plt.show()

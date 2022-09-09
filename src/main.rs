@@ -313,7 +313,7 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>, seed
     let mut rng = StdRng::seed_from_u64(seed);
 
     let num_nodes = 3;
-    let num_proposals = 3000;
+    let num_proposals = 4000;
     let concurrent_proposals = 3000;
     let last_node_id = num_nodes;
     let iteration_id = 1;
@@ -376,7 +376,7 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>, seed
             concurrent_proposals,
             nodes_id,
             None,
-            Duration::from_millis(5000),
+            Duration::from_millis(2000),
             leader_election_latch.clone(),
             finished_latch.clone(),
             prepare_latch.clone(),
@@ -438,7 +438,7 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>, seed
     //simulation_scenario.clog_system(&systems[0]);
 
     let post_break_link = simulation_scenario.get_simulation_step_count();
-
+ 
     
     while finished_latch.count() > 0 {
         simulation_scenario.simulate_step();
@@ -763,13 +763,11 @@ fn raft_five_node_livelock_test(mut simulation_scenario: SimulationScenario<Raft
 }
 
 fn main() {
-
     //Three node partition
-
     //tested 0..26 not successful election_timeout 500
     //81, 115, 152, 215, 284 (client problems?) with 1 5
     //80-140 covere with no problem 1 10
-    for i in 500..1000 {
+    for i in 0..1 {
         println!("starting simulation {}", i);
         //5 gives interesting result?=??
         let decorator = slog_term::TermDecorator::new().build();
