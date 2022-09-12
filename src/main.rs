@@ -52,6 +52,29 @@ impl Into<RaftCompMsg> for GetSequence {
     }
 }
 
+#[derive(Debug, PartialEq)]
+enum SimulationState {
+    ClientState(ClientState),
+    RaftState(RaftState)
+}
+
+impl Display for SimulationState{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Debug)]
+pub struct ClientState{
+    id: u64
+}
+
+impl Display for ClientState{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RaftState{
     id: u64,
@@ -69,26 +92,24 @@ pub struct RaftState{
     randomized_election_timeout: u64
 }
 
-#[derive(Clone, Copy)]
-pub struct SimulationConfig {
-    num_nodes: u64,
-    num_proposals: u64,
-    concurrent_proposals: u64,
-    last_node_id: u64,
-    iteration_id: u64,
-}
-
 impl Display for RaftState{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
     }
 }
 
-impl GetState<RaftState> for Component<RaftComp<Storage>> {
-    fn get_state(&self) -> RaftState {
+#[derive(Clone, Copy)]
+pub struct SimulationConfig {
+    num_nodes: u64,
+    num_proposals: u64,
+    client_timeout: Duration
+}
+
+impl GetState<SimulationState> for Component<RaftComp<Storage>> {
+    fn get_state(&self) -> SimulationState {
         let def = &self.mutable_core.lock().unwrap().definition;
         let log = def.raft_replica.raw_raft.raft.raft_log.get_store();
-        RaftState {
+        let raft_state = RaftState {
             id: def.raft_replica.raw_raft.raft.id,
             term: def.raft_replica.raw_raft.raft.term,
             vote: def.raft_replica.raw_raft.raft.vote,
@@ -103,7 +124,8 @@ impl GetState<RaftState> for Component<RaftComp<Storage>> {
             became_leader_count: def.became_leader_count,
             randomized_election_timeout: def.raft_replica.raw_raft.raft.get_randomized_election_timeout() as u64
             
-        }
+        };
+        SimulationState::RaftState(raft_state)
     }
 }
 
@@ -113,29 +135,15 @@ fn print_all_raft_states(components: Vec<Component<RaftComp<MemStorage>>>){
     }
 }
 
-fn todo_raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>) {
+fn todo_raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>, simulation_config: SimulationConfig, logger: Logger) {
     //Simulation config 5
-
-    //NOT HERE
-    let simulation_config = SimulationConfig {
-        num_nodes: 3,
-        num_proposals: 15,
-        concurrent_proposals: 15,
-        last_node_id: 3,
-        iteration_id: 1,
-    };
-
-    let decorator = slog_term::TermDecorator::new().build();
-    let drain = slog_term::FullFormat::new(decorator).build().fuse();
-    let drain = slog_async::Async::new(drain).chan_size(4096).build().fuse();
-
-    let logger = slog::Logger::root(drain, o!());
     //Create nodes function invocation 1
     let (systems, actor_paths, actor_refs, simulation_scenario) = create_nodes(simulation_scenario, simulation_config, logger.clone());
     let (client_comp, client_path, simulation_scenario) = create_client(simulation_scenario, actor_paths, simulation_config, logger.clone());
     //Create state monitors/inspections invariants 3
     //Register state monitors (implicitly checked for every step) 3
     //Simulation Sequence 1
+
     //Output/Log to console or file final state 1
     todo!()
 }
@@ -167,7 +175,7 @@ fn create_nodes(
         }, REGISTER_TIMEOUT);
 
 
-        let get_state = raft_comp.clone() as Arc<dyn GetState<RaftState>>;
+        let get_state = raft_comp.clone() as Arc<dyn GetState<SimulationState>>;
         simulation_scenario.monitor_actor(get_state);
 
         let actor_path = simulation_scenario.register_by_alias(&system, &raft_comp, RAFT_PATH, REGISTER_TIMEOUT);
@@ -207,10 +215,9 @@ fn create_client (
         Client::with(
             initial_config,
             sim_conf.num_proposals,
-            sim_conf.concurrent_proposals,
             nodes_id,
             None,
-            Duration::from_millis(500),
+            sim_conf.client_timeout,
             leader_election_latch.clone(),
             finished_latch.clone(),
             prepare_latch.clone(),
@@ -221,7 +228,7 @@ fn create_client (
 
     let client_comp_f = simulation_scenario.start_notify(&system, &client_comp, REGISTER_TIMEOUT);
     let client_path = simulation_scenario
-        .register_by_alias(&system, &client_comp, format!("client{}", &sim_conf.iteration_id), REGISTER_TIMEOUT);
+        .register_by_alias(&system, &client_comp, format!("client"), REGISTER_TIMEOUT);
     
     (client_comp, client_path, simulation_scenario)
 }
@@ -251,8 +258,10 @@ fn create_client (
 
 
 
-fn livelock_scenario_ready(simulation_scenario: &SimulationScenario<RaftState>) -> Option<(usize, usize)>{
+fn livelock_scenario_ready(simulation_scenario: &SimulationScenario<SimulationState>) -> Option<(usize, usize)>{
     let states = simulation_scenario.get_all_actor_states();
+
+    //let raft_states = states.into_iter().filter(|state| *state. //howww SimulationState::RaftState);
 
     let state = Some(states.iter().min_by_key(|e| e.log_last_index).unwrap()).unwrap();
     if state.log_last_index < 200 {
@@ -309,7 +318,7 @@ fn livelock_scenario_ready(simulation_scenario: &SimulationScenario<RaftState>) 
     //return None
 }
 
-fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>, seed: u64, logger: Logger) -> Vec<RaftState> {
+fn raft_normal_test(mut simulation_scenario: SimulationScenario<SimulationState>, seed: u64, logger: Logger) -> Vec<RaftState> {
     let mut rng = StdRng::seed_from_u64(seed);
 
     let num_nodes = 3;
@@ -340,7 +349,7 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>, seed
         }, REGISTER_TIMEOUT);
 
 
-        let get_state = raft_comp.clone() as Arc<dyn GetState<RaftState>>;
+        let get_state = raft_comp.clone() as Arc<dyn GetState<SimulationState>>;
         simulation_scenario.monitor_actor(get_state);
 
         let actor_path = simulation_scenario.register_by_alias(&system, &raft_comp, RAFT_PATH, REGISTER_TIMEOUT);
@@ -373,7 +382,6 @@ fn raft_normal_test(mut simulation_scenario: SimulationScenario<RaftState>, seed
         Client::with(
             initial_config,
             num_proposals,
-            concurrent_proposals,
             nodes_id,
             None,
             Duration::from_millis(2000),
@@ -606,7 +614,6 @@ fn raft_five_node_livelock_test(mut simulation_scenario: SimulationScenario<Raft
         Client::with(
             initial_config,
             num_proposals,
-            concurrent_proposals,
             nodes_id,
             None,
             Duration::from_millis(20000),
@@ -777,7 +784,7 @@ fn main() {
         //let filter = slog::Filter(drain, |r| r.level() == Level::Info);
     
         let logger = slog::Logger::root(drain, o!());
-        let mut simulation_scenario: SimulationScenario<RaftState> = SimulationScenario::new();
+        let mut simulation_scenario: SimulationScenario<SimulationState> = SimulationScenario::new();
         let states =  raft_normal_test(simulation_scenario,i, logger);
 
         //std::thread::sleep(Duration::from_millis(10000));

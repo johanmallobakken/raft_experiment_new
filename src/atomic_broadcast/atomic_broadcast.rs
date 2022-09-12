@@ -342,7 +342,6 @@ impl AtomicBroadcastMaster {
             Client::with(
                 initial_config,
                 self.num_proposals.unwrap(),
-                self.concurrent_proposals.unwrap(),
                 nodes_id.clone(),
                 reconfig,
                 client_timeout,

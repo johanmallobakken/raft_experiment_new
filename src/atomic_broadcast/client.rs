@@ -278,7 +278,6 @@ impl Deserialiser<PartitioningActorMsg> for PartitioningActorSer {
 pub struct Client {
     ctx: ComponentContext<Self>,
     num_proposals: u64,
-    num_concurrent_proposals: u64,
     nodes: HashMap<u64, ActorPath>,
     node_vec: Vec<ActorPath>,
     reconfig: Option<(Vec<u64>, Vec<u64>)>,
@@ -320,7 +319,6 @@ impl Client {
     pub fn with(
         initial_config: Vec<u64>,
         num_proposals: u64,
-        num_concurrent_proposals: u64,
         nodes: HashMap<u64, ActorPath>,
         reconfig: Option<(Vec<u64>, Vec<u64>)>,
         timeout: Duration,
@@ -334,14 +332,13 @@ impl Client {
         Client {
             ctx: ComponentContext::uninitialised(),
             num_proposals,
-            num_concurrent_proposals,
             nodes,
             reconfig,
             leader_election_latch,
             finished_latch,
             latest_proposal_id: 0,
             responses: HashMap::with_capacity(num_proposals as usize),
-            pending_proposals: HashMap::with_capacity(num_concurrent_proposals as usize),
+            pending_proposals: HashMap::with_capacity(num_proposals as usize),
             timeout,
             current_leader: 0,
             state: ExperimentState::LeaderElection,
@@ -349,7 +346,7 @@ impl Client {
             num_timed_out: 0,
             leader_changes: vec![],
             first_proposal_after_reconfig: None,
-            retry_proposals: Vec::with_capacity(num_concurrent_proposals as usize),
+            retry_proposals: Vec::with_capacity(num_proposals as usize),
             stop_ask: None,
             n: 0,
             init_id: 0,
@@ -410,67 +407,6 @@ impl Client {
             info!(self.logger, "Proposed reconfiguration. latest_proposal_id: {}, timed_out: {}, pending proposals: {}, min: {:?}, max: {:?}",
                 self.latest_proposal_id, self.num_timed_out, self.pending_proposals.len(), self.pending_proposals.keys().min(), self.pending_proposals.keys().max());
         }
-    }
-
-    fn send_concurrent_proposals(&mut self) {
-        println!("send concurrent");
-        let num_inflight = self.pending_proposals.len() as u64;
-        assert!(num_inflight <= self.num_concurrent_proposals);
-        let available_n = self.num_concurrent_proposals - num_inflight;
-        if num_inflight == self.num_concurrent_proposals || self.current_leader == 0 {
-            return;
-        }
-        let leader = self.nodes.get(&self.current_leader).unwrap().clone();
-        if self.retry_proposals.is_empty() {
-            // normal case
-            let from = self.latest_proposal_id + 1;
-            let i = self.latest_proposal_id + available_n;
-            let to = if i > self.num_proposals {
-                self.num_proposals
-            } else {
-                i
-            };
-            if from > to {
-                return;
-            }
-            let cache_start_time =
-                self.num_concurrent_proposals == 1 || cfg!(feature = "track_latency");
-            for id in from..=to {
-                let current_time = match cache_start_time {
-                    true => Some(SystemTime::now()),
-                    _ => None,
-                };
-                self.propose_normal(id);
-                let timer = self.schedule_once(self.timeout, move |c, _| c.proposal_timeout(id));
-                let proposal_meta = ProposalMetaData::with(current_time, timer);
-                self.pending_proposals.insert(id, proposal_meta);
-            }
-            self.latest_proposal_id = to;
-        } else {
-            let num_retry_proposals = self.retry_proposals.len();
-            let n = if num_retry_proposals > available_n as usize {
-                available_n as usize
-            } else {
-                num_retry_proposals
-            };
-            let retry_proposals: Vec<_> = self.retry_proposals.drain(0..n).collect();
-            #[cfg(feature = "track_timeouts")]
-            {
-                let min = retry_proposals.iter().min();
-                let max = retry_proposals.iter().max();
-                let count = retry_proposals.len();
-                let num_pending = self.pending_proposals.len();
-                info!(self.logger, "Retrying proposals to node {}. Count: {}, min: {:?}, max: {:?}, num_pending: {}", self.current_leader, count, min, max, num_pending);
-            }
-            for (id, start_time) in retry_proposals {
-                self.propose_normal(id);
-                //println!("RETRY PROPOSAL TIMEOUT");
-                let timer = self.schedule_once(self.timeout, move |c, _| c.proposal_timeout(id));
-                let meta = ProposalMetaData::with(start_time, timer);
-                self.pending_proposals.insert(id, meta);
-            }
-        }
-        println!("End concurrent!");
     }
 
     fn handle_normal_response(&mut self, id: u64, latency_res: Option<Duration>) {
